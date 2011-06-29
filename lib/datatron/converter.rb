@@ -1,3 +1,5 @@
+require 'singleton'
+
 module Datatron
   class Converter
     include Singleton
@@ -24,7 +26,7 @@ module Datatron
         end
         
         if to_model.class.respond_to? :transaction
-          ActiveRecord::Base.transaction do
+          to_model.transaction do
             translate_action.call
           end
         else
@@ -37,13 +39,11 @@ module Datatron
     end
 
     def load_strategy table, strategy, keys
-      ar_model = table.singularize.camelize
-      
-      klass = "Datatron::#{ar_model}".constantize
-      app = self
+      debugger
+      1
       
       Class.new do
-        include ActiveRecordTranslator
+        include StrategyInterface 
         @strategy = klass.new strategy, keys 
         @ar_model = @strategy.class.ar_model
         #make life simpler - just pass these through to the converter instance
@@ -71,5 +71,54 @@ module Datatron
       end
     end
   end
+
+  module StrategyInterface 
+    attr_accessor :data_row, :strategy, :ar_item
+
+    def translate
+      #the basic principle here is that the Translator
+      # asks the "Transform" what to do with each key?
+      # where do I get the information for this attribute?
+      # The transform ansers "get it from here"
+      # Or "get it from the column of the samn name"
+      # Or "get it from X but run it through this function
+      # first
+      # Or "Just tell the record item you'd like it populated."
+      # or "Different step - ask for it to be done."
+      debugger
+      1
+      ar_item.attribute_names.each do |k|
+        source_key = strategy.transform k
+        case source_key
+          when String
+            ar_item.attributes[k] = data_row[source_key]
+          when Hash
+            ar_item.attributes[k] = source_key.to_a 
+          when TrueClass
+            ar_item.attributes[k] = data_row[k]
+          when FalseClass
+            #do nothing
+          when Proc
+            ar_item.attributes[k] = source_key[data_row[k]]
+          when UsingTranslationAction
+            # do this one next, but wrap it in the same transaction
+            # and 
+            debugger
+            1
+        end
+      end
+    end
+
+    def translate!
+      translate
+      if ar_item.valid?
+        ar_item.save!
+      else
+        raise ActiveRecord::RecordInvalid, ar_item 
+      end
+    end
+
+  end
 end
+
 

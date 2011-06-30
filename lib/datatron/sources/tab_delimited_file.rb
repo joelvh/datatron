@@ -1,6 +1,6 @@
-class Datatron
+module Datatron
   module Sources
-    class TabDelimitedFile
+    class TabDelimitedFile < Datatron::Source
       class << self
         def for_file filename, seperator = "\n"
           klass = Class.new(self) do |c|
@@ -52,10 +52,11 @@ class Datatron
               @data = Hash[self.class.keys.zip([])] 
             end
           end
+        class_name = filename.split(/\/|\./)[-2] #last elements without the extension
+        Datatron::Sources.const_set class_name.camelize.intern, klass
         end
-        Datatron::Sources.const_set filename.camelize.intern, klass
       end
-      undef :initialize
+      silence_warnings { undef :initialize } 
     end
   end
 end

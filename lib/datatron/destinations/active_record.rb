@@ -14,7 +14,7 @@ module Datatron
         end
         Datatron::Destination.const_set table.camelize.intern, klass
       end
-      undef :initialize
+      silence_warnings { undef :initialize }
     end
   end
 end

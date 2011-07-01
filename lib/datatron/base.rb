@@ -3,37 +3,59 @@ module Datatron
     extend ActiveSupport::Concern
 
     module ClassMethods
-      [:keys, :next_row].map do |meth|
-        define_method(meth) do |&block|
-          instance_exec &block
+      def keys &block
+        raise NotImplementedError,"#{__method__} called for the first time without a block" if block.nil?
+        define_singleton_method :keys, &block
+      end
+
+      def next_row &block
+        raise NotImplementedError,"#{__method__} called for the first time without a block" if block.nil?
+        define_singleton_method :next_row do
+          @data ||= Enumerator.new do |y|
+            block.call(y)
+          end
+          begin
+            @data.next
+          rescue StopIteration
+            nil
+          end
         end
       end
+      attr_accessor :data
+
       alias :column_names :keys
 
-      attr_accessor :real_class
+      def data_class name, &block
+        raise ArgumentError, "Block required" if block.nil?
+        klass = Class.new(self)
+        klass.singleton_class.__send__ :attr_accessor, :data_class
+        klass.instance_exec klass, &block
+        self.parent.const_set name.singularize.camelize.intern, klass
+      end
     end
 
     module InstanceMethods
       def __getobj__
-        @obj ||= self.class.real_class.new
+        @obj ||= self.class.data_class.new
       end
 
-      def __setobj__ &block
-        @obj ||= yield
+      def __setobj__ obj
+        @obj = obj
       end
       
-      def row &block
-        block.nil? ? __setobj__(&block) : __getobj__
+      def initialize obj = nil
+        __setobj__(obj || self.class.data_class.new)
       end
+    end
   end
 
   class Source < Delegator 
     include DataDelegation
-    silence_warnings { undef :initialize }
+    #silence_warnings { undef :initialize }
   end
 
   class Destination < Delegator
-    include DataDelgation
-    silence_warnings { undef :initialize }
+    include DataDelegation
+    #silence_warnings { undef :initialize }
   end
 end

@@ -1,20 +1,23 @@
 module Datatron
   module Destinations
-    class ActiveRecord < ActiveRecord::Base
-      def for_table table 
-        klass = Class.new(self) do |c|
-          define_singleton_method :next_row do
-            @data ||= Enumerator.new do |y|
-              c.each do |i|
-                y.yield i
+    class ActiveRecord < Datatron::Destination 
+      class << self
+        def for_table table
+          data_class table do |c|
+            c.data_class = table.singularize.camelize.constantize 
+
+            next_row do |y|
+              pt = c.data_class.arel_table
+              id = 0
+              loop do
+                obj = c.data_class.find_by_sql(pt.project('*').where(pt[:id].gteq(id)).order(pt[:id].asc).to_sql).first
+                obj ? y.yield(self.new(obj)) : break 
+                id = obj.id + 1 
               end
             end
-            @data.next
           end
         end
-        Datatron::Destination.const_set table.camelize.intern, klass
       end
-      silence_warnings { undef :initialize }
     end
   end
 end

@@ -23,11 +23,12 @@ module Datatron
         if block_given?
           @strategies ||= HashWithIndifferentAccess.new {}
           @strategies[meth] = {} 
+          args = args.first if args.first.is_a? Hash
           @strategies[meth].merge!({ :block => block, :args => args })
         elsif @strategies.has_key? meth
-          l = lambda do |keys|
-            self.new(meth,keys,args,&block)
-          end
+          args = @strategies[meth][:args]
+          block = @strategies[meth][:block]
+          self.new(meth,args,&block)
         else
           super
         end

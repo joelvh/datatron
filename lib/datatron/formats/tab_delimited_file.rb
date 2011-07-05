@@ -1,6 +1,6 @@
 module Datatron
-  module Sources
-    class TabDelimitedFile < Datatron::Source
+  module Formats
+    class TabDelimitedFile < Datatron::Format
       class << self
         def for_file filename, seperator = "\n"
           class_name = filename.split(/\/|\./)[-2] #last elements without the extension
@@ -44,6 +44,9 @@ module Datatron
               end
             end
 
+            def save
+              fd.
+              
             def initialize obj = nil
               __setobj__(obj || Hash[self.class.keys.zip([])])
             end

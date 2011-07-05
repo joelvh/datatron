@@ -12,6 +12,9 @@ module Datatron
       @requested_conversions ||= {} 
     end
 
+    def request_conversion type, source, strategy
+    end
+
     def do_conversions options = {}
       while requested_conversions.size > 0
         conv_id = requested_conversions.keys.first

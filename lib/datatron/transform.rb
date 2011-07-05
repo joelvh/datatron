@@ -1,5 +1,9 @@
 module Datatron
   class Transform
+    def self.const_missing const
+      Datatron::Formats.const_get const
+    end
+
     include TransformMethods
 
     module FuzzyInclude
@@ -21,34 +25,38 @@ module Datatron
     end
 
     def to_model to = nil
-      if not to
+      if not to and not @to_model
         @to_model = self.class.to_model 
       elsif to and not @to_model
-        @to_model = to.to_s.split('::')[-1].constantize
+        @to_model = Datatron::Formats.const_get to.to_s.split('::')[-1]
       else
-        warn "Doubly specified from model for #{self.class}" if to 
-        @to_model
-      end
-    end
-
-    def from_model from = nil
-      if not from
-        @from_model = self.class.to_model
-      elsif from and not @from_model
-        @from_model = from.to_s.split('::')[-1].constantize
-      else
-        warn "Doubly specified from model for #{self.class}" if from
         @from_model
       end
     end
+    alias :to_model= :to_model
+
+
+    def from_model from = nil
+      if not from and not @from_model
+        @from_model = self.class.to_model
+      elsif from
+        @from_model = Datatron::Formats.const_get from.to_s.split('::')[-1]
+      else
+        @from_model
+      end
+    end
+    alias :from_model= :from_model
 
     def initialize strategy, options = {}, &block
       strat = self.class.strategies[strategy]
-      options.reverse_merge!(strat[:args].last) if strat[:args].last
+      options.reverse_merge!(strat[:args])
       options.reverse_merge!( {:to => self.to_model, 
                                :keys => :column_names,
                                :from => self.from_model,
                                :from_keys => :column_names})
+
+      self.to_model = options[:to]
+      self.from_model = options[:from]
       
      
       @origin_fields = from_model.send options[:from_keys]

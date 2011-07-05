@@ -49,12 +49,7 @@ module Datatron
     end
   end
 
-  class Source < Delegator 
-    include DataDelegation
-    #silence_warnings { undef :initialize }
-  end
-
-  class Destination < Delegator
+  class Format
     include DataDelegation
     #silence_warnings { undef :initialize }
   end

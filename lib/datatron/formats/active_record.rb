@@ -1,6 +1,8 @@
+require 'active_record'
+
 module Datatron
-  module Destinations
-    class ActiveRecord < Datatron::Destination 
+  module Formats 
+    class ActiveRecord < Datatron::Format
       class << self
         def for_table table
           data_class table do |c|

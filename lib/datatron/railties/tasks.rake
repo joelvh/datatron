@@ -3,7 +3,7 @@ require 'datatron'
 require 'datatron/rake'
 
 namespace :datatron do
-  desc "convert (<table> OR <file>) <file(s)>... <strategy> = default_strategy -- Import a file using a particular strategy from the strategy file."
+  desc "convert (<table> OR <file>) <type> <strategy> = default_strategy -- Import a file using a particular strategy from the strategy file."
   task :import => :environment do |t|
     begin
       require "#{RAILS_ROOT}/data/transforms"

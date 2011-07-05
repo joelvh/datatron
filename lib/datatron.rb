@@ -7,8 +7,6 @@ require 'datatron/transform'
 require 'datatron/base'
 
 module Datatron
-  autoload :ActiveRecord, 'active_record'
-  
   if defined? Rails
     class DatatronTasks < Rails::Railtie
       rake_tasks do
@@ -16,8 +14,8 @@ module Datatron
       end
     end
   end
-  
-  module Sources
+
+  module Formats
     class << self
       def const_missing const
         autoload const, [self, const].collect(&:to_s).join('::').underscore
@@ -25,14 +23,4 @@ module Datatron
       end
     end
   end
-
-  module Destinations
-   class << self
-      def const_missing const
-        autoload const, [self, const].collect(&:to_s).join('::').underscore
-        const_get const
-      end
-    end
-  end
 end
-

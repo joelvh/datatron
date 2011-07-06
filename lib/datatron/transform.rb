@@ -14,51 +14,23 @@ module Datatron
 
     attr_accessor :finder
 
-    class << self
-      def to_model
-        self.to_s.split('::')[-1].constantize
-      end 
-
-      def from_model
-        self.to_s.split('::')[-1].constantize
-      end
-    end
-
-    def to_model to = nil
-      if not to and not @to_model
-        @to_model = self.class.to_model 
-      elsif to and not @to_model
-        @to_model = Datatron::Formats.const_get to.to_s.split('::')[-1]
-      else
-        @from_model
-      end
-    end
-    alias :to_model= :to_model
-
-
-    def from_model from = nil
-      if not from and not @from_model
-        @from_model = self.class.to_model
-      elsif from
-        @from_model = Datatron::Formats.const_get from.to_s.split('::')[-1]
-      else
-        @from_model
-      end
-    end
-    alias :from_model= :from_model
-
-    def initialize strategy, options = {}, &block
+    def initialize strategy, *args, options = {}, &block
       strat = self.class.strategies[strategy]
-      options.reverse_merge!(strat[:args])
-      options.reverse_merge!( {:to => self.to_model, 
-                               :keys => :column_names,
-                               :from => self.from_model,
-                               :from_keys => :column_names})
-
-      self.to_model = options[:to]
-      self.from_model = options[:from]
+      options.merge!(strat[:args])
       
-     
+      init_blocks = [strat[:block]]
+      init_blocks << block unless block.nil?
+      init_blocks.each do |b|
+        instance_exec args.slice(0,b.arity), &b
+      end
+
+      #to and from are likely to be nil here, unless
+      #there is specific data source
+      options.merge!( {:to => self.to_model.data_source, 
+                       :keys => :keys,
+                       :from => self.from_model.data_source,
+                       :from_keys => :keys})
+
       @origin_fields = from_model.send options[:from_keys]
       @destination_fields = to_model.send options[:keys] #fields in the new object
      
@@ -68,9 +40,6 @@ module Datatron
       @current = :ready #subvert!
       init_blocks = [strat[:block]]
       init_blocks << block unless block.nil?
-      init_blocks.each do |b|
-        instance_exec *[@origin_fields, @destination_fields].slice(0,b.arity), &b
-      end
       lookup
     end
 

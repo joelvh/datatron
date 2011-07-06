@@ -13,6 +13,9 @@ module Datatron
     end
 
     def request_conversion type, source, strategy
+      debugger
+      1
+      type.camelize
     end
 
     def do_conversions options = {}
@@ -42,13 +45,10 @@ module Datatron
     end
 
     def load_strategy table, strategy, keys
-      debugger
-      1
       
       Class.new do
         include StrategyInterface 
-        @strategy = klass.new strategy, keys 
-        @ar_model = @strategy.class.ar_model
+        @strategy = klass.new strategy
         #make life simpler - just pass these through to the converter instance
         define_method :requested_conversions do
           app.requested_conversions

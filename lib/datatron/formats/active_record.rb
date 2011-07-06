@@ -4,11 +4,11 @@ module Datatron
   module Formats 
     class ActiveRecord < Datatron::Format
       class << self
-        def for_table table
+        def for table
           data_class table do |c|
-            c.data_class = table.singularize.camelize.constantize 
+            c.data_source = table.singularize.camelize.constantize 
 
-            next_row do |y|
+            each do |y|
               pt = c.data_class.arel_table
               id = 0
               loop do

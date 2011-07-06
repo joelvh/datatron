@@ -23,10 +23,8 @@ module Datatron
         if block_given?
           @strategies ||= HashWithIndifferentAccess.new {}
           @strategies[meth] = {} 
-          args = args.first if args.first.is_a? Hash
           @strategies[meth].merge!({ :block => block, :args => args })
         elsif @strategies.has_key? meth
-          args = @strategies[meth][:args]
           block = @strategies[meth][:block]
           self.new(meth,args,&block)
         else
@@ -97,6 +95,22 @@ module Datatron
             @strategy_hash.default = CopyTranslationAction.instance
           when :discard
             @strategy_hash.default = DiscardTranslationAction.instance
+        end
+      end
+    
+      def to_model to = nil
+        if to
+          @to_model = Datatron::Formats.const_get to.to_s.split('::')[-1]
+        else
+          @to_model
+        end
+      end
+
+      def from_model from = nil
+        if from 
+          @from_model = Datatron::Formats.const_get from.to_s.split('::')[-1]
+        else
+          @from_model
         end
       end
 

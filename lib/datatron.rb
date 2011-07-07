@@ -1,7 +1,6 @@
 require 'active_support/core_ext'
 
 require 'datatron/converter'
-require 'datatron/transforms'
 require 'datatron/transform_methods'
 require 'datatron/transform'
 require 'datatron/base'
@@ -15,6 +14,9 @@ module Datatron
     end
   end
 
+  class DatatronError < StandardError; end
+  class SourceClassNotFound < DatatronError; end
+
   module Formats
     class << self
       def const_missing const
@@ -23,4 +25,17 @@ module Datatron
       end
     end
   end
+
+  def transforms
+    self.constants.each_with_object [] do |c, memo|
+      klass = self.const_get c 
+      memo << klass if klass.is_a? Class and klass < Datatron::Transform
+    end
+  end
+  module_function :transforms
+
+  class InvalidTransition < DatatronError; end
+  class TranslationFormatError < DatatronError; end
+  class TranslationKeyError < DatatronError; end 
+
 end

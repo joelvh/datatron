@@ -20,30 +20,39 @@ module Datatron
     
     module ClassMethods
       def method_missing meth, *args, &block
+        args.push({}) if args.empty?
+        args[-1] = {} unless args.last.is_a? Hash
         if block_given?
           @strategies ||= HashWithIndifferentAccess.new {}
           @strategies[meth] = {} 
           @strategies[meth].merge!({ :block => block, :args => args })
         elsif @strategies.has_key? meth
           block = @strategies[meth][:block]
+          args.insert(-2, @strategies[meth][args]).flatten
           self.new(meth,args,&block)
         else
           super
         end
       end
 
-      def to arg
-        @instantiator = arg
-      end
-
       def strategies
         @strategies
       end
+
+      def base_name
+        self.to_s.split('::').last.underscore.pluralize
+      end
     end
 
+
+    #DSL Methods
     module InstanceMethods
       #cause I get sick of fucking typing it
       ATA = AwaitingTranslationAction.instance
+
+      def base_name
+        self.class.base_name
+      end
  
       def current_status= arg
         status, field = *arg
@@ -65,6 +74,9 @@ module Datatron
 
       [:to, :from].map do |op|
         inverse_op = op == :to ? :from : :to
+
+        attr_accessor "#{op}_source".intern
+        
         define_method op do |field, &block|
           op_field = @current_field
           self.current_status = op, field
@@ -76,13 +88,29 @@ module Datatron
             @strategy_hash[op][field] = block || ATA
           end
         end
+
+        self.class_eval <<-MODELS
+          def #{op}_model(#{op} = nil)
+            if #{op} 
+              raise ::ArgumentError, "Datatron::Format class expected got #{op.class}" unless #{op} < Datatron::Format
+              @#{op}_model = #{op} 
+              new_model = lambda { @#{op}_model.new(self.base_name) }
+              @#{op}_source =  @#{op}_model.subclasses.find(new_model) do |sc|
+                sc.base_name =~ /^\#{base_name\}$/
+              end
+            else
+              @#{op}_model
+            end
+          end 
+        MODELS
+    
       end
 
       def through method = nil, &block
         raise ArgumentError, "Through can take a block or a method name, but not both" if block_given? and method.nil?
         self.current_status = :through, @current_field
         
-        block = self.class.to_s.split('::')[-1].constantize.method method if method
+        block = @from_source.method method if method
         
         @strategy_hash[:to][@current_field] = {
           @current_field => block
@@ -97,23 +125,7 @@ module Datatron
             @strategy_hash.default = DiscardTranslationAction.instance
         end
       end
-    
-      def to_model to = nil
-        if to
-          @to_model = Datatron::Formats.const_get to.to_s.split('::')[-1]
-        else
-          @to_model
-        end
-      end
-
-      def from_model from = nil
-        if from 
-          @from_model = Datatron::Formats.const_get from.to_s.split('::')[-1]
-        else
-          @from_model
-        end
-      end
-
+   
       def using strategy
         op_field, state = current_field, current_status
         self.current_status = :using, nil

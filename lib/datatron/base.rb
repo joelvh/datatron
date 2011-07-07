@@ -17,6 +17,10 @@ module Datatron
         end
       end
 
+      def new
+        raise NotImplementedError,"Subclasses of Datatron::Format should implement #new"
+      end
+
       def next
         @data ||= self.each
         @data.next
@@ -27,13 +31,15 @@ module Datatron
       end
 
       attr_accessor :data_source
+      attr_accessor :base_name
 
       alias :column_names :keys
 
       def data_class name, &block
         raise ArgumentError, "Block required" if block.nil?
         klass = Class.new(self, &block)
-        self.parent.const_set name.singularize.camelize.intern, klass
+        self.base_name = name
+        self.const_set name.singularize.camelize.intern, klass
       end
     end
 

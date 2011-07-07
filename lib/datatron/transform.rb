@@ -14,33 +14,27 @@ module Datatron
 
     attr_accessor :finder
 
-    def initialize strategy, *args, options = {}, &block
+    def initialize strategy, *args, &block 
       strat = self.class.strategies[strategy]
-      options.merge!(strat[:args])
-      
+      options = (args.pop! if args.last.is_a? Hash) || {}
+      @current = :ready
+      @strategy_hash = HashWithIndifferentAccess.new(:from => {}, :to => {}) 
+
       init_blocks = [strat[:block]]
       init_blocks << block unless block.nil?
       init_blocks.each do |b|
         instance_exec args.slice(0,b.arity), &b
       end
+      options.reverse_merge!({:to => @to_source, 
+                              :keys => :keys,
+                              :from => @from_source,
+                              :from_keys => :keys})
 
-      #to and from are likely to be nil here, unless
-      #there is specific data source
-      options.merge!( {:to => self.to_model.data_source, 
-                       :keys => :keys,
-                       :from => self.from_model.data_source,
-                       :from_keys => :keys})
+      raise ArgumentError, "Couldn't find #{self.from_model} subclass for #{self.class}" unless options[:from]
+      raise ArgumentError, "Couldn't find #{self.to_model} subclass for #{self.class}" unless options[:to]
 
-      @origin_fields = from_model.send options[:from_keys]
-      @destination_fields = to_model.send options[:keys] #fields in the new object
-     
-      #create the strategy lookup table via the dsl - send in the field lists if
-      # the strategy wants them
-      @strategy_hash = HashWithIndifferentAccess.new(:from => {}, :to => {}) 
-      @current = :ready #subvert!
-      init_blocks = [strat[:block]]
-      init_blocks << block unless block.nil?
-      lookup
+      debugger
+      1
     end
 
     def transform key

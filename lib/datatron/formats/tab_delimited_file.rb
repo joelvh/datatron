@@ -27,7 +27,10 @@ module Datatron
   module Formats
     class TabDelimitedFile < Datatron::Format
       class << self
-        def for filename, seperator = "\n"
+        def new filename, seperator = "\n"
+          filename = "data/#{filename}.txt"
+          raise DataSourceNotFound, "No such file or directory #{filename}" unless File.exists? filename
+
           class_name = filename.split(/\/|\./)[-2] #last elements without the extension
           data_class class_name do |c|
             c.send :include, TabFileMethods

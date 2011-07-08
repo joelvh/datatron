@@ -13,8 +13,9 @@ module Datatron
 
     class UsingTranslationAction
       attr_accessor :strategy
-      def initialize strat
+      def initialize strat, &block
         @strategy = strat
+        @strategy.modify &block
       end
     end
     
@@ -29,7 +30,7 @@ module Datatron
         elsif @strategies.has_key? meth
           block = @strategies[meth][:block]
           args.insert(-2, @strategies[meth][args]).flatten
-          self.new(meth,args,&block)
+          self.new(meth,*args,&block)
         else
           super
         end
@@ -75,8 +76,6 @@ module Datatron
       [:to, :from].map do |op|
         inverse_op = op == :to ? :from : :to
 
-        attr_accessor "#{op}_source".intern
-        
         define_method op do |field, &block|
           op_field = @current_field
           self.current_status = op, field
@@ -89,21 +88,28 @@ module Datatron
           end
         end
 
-        self.class_eval <<-MODELS
-          def #{op}_model(#{op} = nil)
-            if #{op} 
-              raise ::ArgumentError, "Datatron::Format class expected got #{op.class}" unless #{op} < Datatron::Format
-              @#{op}_model = #{op} 
-              new_model = lambda { @#{op}_model.new(self.base_name) }
-              @#{op}_source =  @#{op}_model.subclasses.find(new_model) do |sc|
-                sc.base_name =~ /^\#{base_name\}$/
-              end
-            else
-              @#{op}_model
+        define_method "#{op}_model".intern do |model = nil|
+          if model 
+            raise ::ArgumentError, "Datatron::Format class expected got #{model.class}" unless #{model} < Datatron::Format
+            instance_variable_set "@#{op}_model", model
+            __send__ "#{op}_source".intern, self.base_name
+          else
+            instance_variable_get "@#{op}_model"
+          end
+        end
+
+        define_method "#{op}_source".intern do |source = nil|
+          if source
+            model = __send__ "#{op}_model".intern
+            new_model = lambda { model.new(source)}
+            source_class = model.subclasses.find(new_model) do |sc|
+              sc.base_name == source
             end
+            instance_variable_set "@#{op}_source", source_class
+          else
+            instance_variable_get "@#{op}_source"
           end 
-        MODELS
-    
+        end
       end
 
       def through method = nil, &block
@@ -126,10 +132,10 @@ module Datatron
         end
       end
    
-      def using strategy
+      def using strategy, &block
         op_field, state = current_field, current_status
         self.current_status = :using, nil
-        @strategy_hash[state][op_field] = UsingTranslationAction.new(strategy) 
+        @strategy_hash[state][op_field] = UsingTranslationAction.new(strategy, &block) 
         self.current_status = :ready, nil
       end
 

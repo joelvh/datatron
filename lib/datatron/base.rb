@@ -38,7 +38,7 @@ module Datatron
       def data_class name, &block
         raise ArgumentError, "Block required" if block.nil?
         klass = Class.new(self, &block)
-        self.base_name = name
+        klass.base_name = name
         self.const_set name.singularize.camelize.intern, klass
       end
     end

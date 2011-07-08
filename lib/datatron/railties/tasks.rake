@@ -24,10 +24,10 @@ namespace :datatron do
     converter = Datatron::Converter.instance
 
     # what transforms do I know about?
-    known_transforms = Datatron.transforms.collect { |t| t.to_model.to_s.pluralize.underscore }
+    known_transforms = Datatron.transforms.each_with_object({}) { |t,memo| memo[t.base_name] = t }
     split_on_names = args.each_with_object [] do |b, memo|
       begin 
-        if known_transforms.include? b
+        if known_transforms.keys.include? b
           memo << [b.strip]
         else
           memo.last << b.strip
@@ -37,18 +37,13 @@ namespace :datatron do
       end
     end
 
-    conversions = split_on_names.collect do |s|
-      nh = Hash[[:table, :file, :strategy].zip(s)]
-      {:file => "data/#{s[0]}.txt", :strategy => :default_strategy}.merge(nh) { |k, nv, ov| ov ? ov : nv }
+    converter.request_conversions << split_on_names.collect do |s|
+      sh = Hash[[:table, :file, :strategy].zip(s)]
+      {:file => nil, :strategy => :default_strategy}.merge(nh) { |k, nv, ov| ov ? ov : nv }
+      known_transforms[sh[:table]].__send__(sh[:strategy], { :from => s[:file] })
     end
 
-    conversions.each do |c_spec|
-      raise LoadError, "Missing data file #{c_spec[:file]}" unless File.exists? "#{RAILS_ROOT}/#{c_spec[:file]}"
-      converter.requested_conversions[c_spec.hash] = c_spec
-    end
-    
     converter.do_conversions
-    
   end
 end
 

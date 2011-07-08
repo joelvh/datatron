@@ -16,7 +16,7 @@ module Datatron
 
     def initialize strategy, *args, &block 
       strat = self.class.strategies[strategy]
-      options = (args.pop! if args.last.is_a? Hash) || {}
+      options = (args.pop if args.last.is_a? Hash) || {}
       @current = :ready
       @strategy_hash = HashWithIndifferentAccess.new(:from => {}, :to => {}) 
 
@@ -25,16 +25,33 @@ module Datatron
       init_blocks.each do |b|
         instance_exec args.slice(0,b.arity), &b
       end
+
       options.reverse_merge!({:to => @to_source, 
                               :keys => :keys,
                               :from => @from_source,
                               :from_keys => :keys})
 
-      raise ArgumentError, "Couldn't find #{self.from_model} subclass for #{self.class}" unless options[:from]
-      raise ArgumentError, "Couldn't find #{self.to_model} subclass for #{self.class}" unless options[:to]
 
-      debugger
-      1
+      [:to, :from].each do |op|
+        model, source = ["model","source"].collect { |s| "#{op}_#{s}".intern }
+        unless(options[op] == __send__(source)) then
+          __send__ source, options[op]
+          unless __send__ source
+            raise ArgumentError, "Couldn't find #{model} subclass for #{self.class}"
+          end
+        end
+      end
+  
+      #remove the DSL state tracking variables
+      [:@current, :@current_field].each do |i|
+        remove_instance_variable i
+      end
+    end
+
+    def modify *args, &block
+      @current = :ready
+      instance_exec args.slice(0,block.arity), &block
+      remove_instance_variable :@current
     end
 
     def transform key

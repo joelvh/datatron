@@ -15,7 +15,7 @@ module Datatron
   end
 
   class DatatronError < StandardError; end
-  class SourceClassNotFound < DatatronError; end
+  class DataSourceNotFound < DatatronError; end
 
   module Formats
     class << self

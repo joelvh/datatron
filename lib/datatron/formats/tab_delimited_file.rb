@@ -27,7 +27,7 @@ module Datatron
   module Formats
     class TabDelimitedFile < Datatron::Format
       class << self
-        def new filename, seperator = "\n"
+        def from filename, seperator = "\n"
           filename = "data/#{filename}.txt"
           raise DataSourceNotFound, "No such file or directory #{filename}" unless File.exists? filename
 

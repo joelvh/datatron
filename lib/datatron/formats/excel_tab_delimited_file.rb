@@ -2,7 +2,7 @@ module Datatron
   module Formats 
     class ExcelTabDelimitedFile < TabDelimitedFile
       class << self
-        def new filename
+        def from filename
           super filename, "\r"
         end
       end

@@ -13,9 +13,9 @@ module Datatron
 
     class UsingTranslationAction
       attr_accessor :strategy
-      def initialize strat, &block
+      def initialize *args, strat, &block
         @strategy = strat
-        @strategy.modify &block
+        @strategy.modify *args, &block
       end
     end
     
@@ -36,6 +36,25 @@ module Datatron
         end
       end
 
+      def transition_valid? from, to
+        return true if from.nil?
+
+        unless @transition_table
+          @transition_table = {  
+            :ready => [:to, :from],
+            :to => [:from, :through, :using, :ready],
+            :from => [:to, :through, :ready]
+          }
+          @transition_table.default = [:ready]
+        end
+          
+        @transition_table[from].include?(to) ? true : false
+      end
+
+      def const_missing const
+        Datatron::Formats.const_get const
+      end
+
       def strategies
         @strategies
       end
@@ -49,14 +68,34 @@ module Datatron
     #DSL Methods
     module InstanceMethods
       #cause I get sick of fucking typing it
-      ATA = AwaitingTranslationAction.instance
+      
+      attr_accessor :finder
+      attr_accessor :router
 
       def base_name
         self.class.base_name
       end
+
+      def modify *args, &block
+        self.instance_exec args.slice(0,block.arity), &block
+        self.current_status = nil, nil
+      end
+
+      def like strategy, *args
+        strat = self.class.strategies[strategy]
+        self.modify strat[:args], &strat[:block]
+      end
  
       def current_status= arg
         status, field = *arg
+
+        if status.nil? and field.nil?
+          [:@current, :@current_field].each do |i|
+            remove_instance_variable(i) rescue nil
+          end
+          return
+        end
+
         if self.class.transition_valid? @current, status
           @current = status 
           @current_field = field
@@ -80,12 +119,17 @@ module Datatron
           op_field = @current_field
           self.current_status = op, field
           if @strategy_hash[inverse_op].has_key? field
-            raise InvalidTransition, "#{inverse_op} action for #{field} is already defined" unless @strategy_hash[inverse_op][field] == ATA 
+            unless @strategy_hash[inverse_op][field] == AwaitingTranslationAction.instance
+              raise InvalidTransition, "#{inverse_op} action for #{field} is already defined"
+            end
           elsif @strategy_hash[inverse_op].has_key? op_field
             @strategy_hash[inverse_op][op_field] = !block.nil? ? { field => block } : field.to_s
           else 
-            @strategy_hash[op][field] = block || ATA
+            @strategy_hash[op][field] = block || AwaitingTranslationAction.instance 
           end
+          
+          #don't put "done" after to / from with blocks
+          self.current_status = :ready, nil if !block.nil?
         end
 
         define_method "#{op}_model".intern do |model = nil|
@@ -101,7 +145,7 @@ module Datatron
         define_method "#{op}_source".intern do |source = nil|
           if source
             model = __send__ "#{op}_model".intern
-            new_model = lambda { model.new(source)}
+            new_model = lambda { model.from(source)}
             source_class = model.subclasses.find(new_model) do |sc|
               sc.base_name == source
             end
@@ -131,15 +175,10 @@ module Datatron
             @strategy_hash.default = DiscardTranslationAction.instance
         end
       end
-   
-      def using strategy, &block
-        op_field, state = current_field, current_status
-        self.current_status = :using, nil
-        @strategy_hash[state][op_field] = UsingTranslationAction.new(strategy, &block) 
-        self.current_status = :ready, nil
-      end
 
-      def done
+      def using *args, strategy, &block
+        op_field, state = current_field, current_status
+        @strategy_hash[state][op_field] = UsingTranslationAction.new(*args, strategy, &block)
         self.current_status = :ready, nil
       end
 
@@ -155,13 +194,18 @@ module Datatron
         self.current_status = :ready, nil
       end
 
-      def find_by method, options = {}
-        options.reverse_merge!({ :as => method })
-        @finder = "#{find_by_}#{method}".intern, options[:as], options
+      def find *args, &block 
+        @finder = [args, block]
       end
 
+      def destination field, &block
+        unless field
+          @router = block
+        else
+          @router = [field, block]
+          @strategy_hash[:to][field] = WeakRef.new @router
+        end
+      end
     end
-
   end
-
 end

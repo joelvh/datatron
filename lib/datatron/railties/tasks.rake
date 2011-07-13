@@ -3,7 +3,7 @@ require 'datatron'
 require 'datatron/rake'
 
 namespace :datatron do
-  desc "convert (<table> OR <file>) <type> <strategy> = default_strategy -- Import a file using a particular strategy from the strategy file."
+  desc "convert (<table> OR <file>) <type> <strategy> = default_strategy -- Import using a particular strategy from the strategy file."
   task :import => :environment do |t|
     begin
       require "#{RAILS_ROOT}/data/transforms"
@@ -37,7 +37,7 @@ namespace :datatron do
       end
     end
 
-    converter.request_conversions << split_on_names.collect do |s|
+    converter.requested_conversions << split_on_names.collect do |s|
       sh = Hash[[:table, :file, :strategy].zip(s)]
       {:file => nil, :strategy => :default_strategy}.merge(nh) { |k, nv, ov| ov ? ov : nv }
       known_transforms[sh[:table]].__send__(sh[:strategy], { :from => s[:file] })

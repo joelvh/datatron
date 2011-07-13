@@ -17,7 +17,7 @@ module Datatron
         end
       end
 
-      def new
+      def from 
         raise NotImplementedError,"Subclasses of Datatron::Format should implement #new"
       end
 
@@ -45,7 +45,7 @@ module Datatron
 
     module InstanceMethods
       def __getobj__
-        @obj ||= self.class.data_class.new
+        @obj ||= self.class.data_source.new
       end
 
       def __setobj__ obj
@@ -53,13 +53,12 @@ module Datatron
       end
       
       def initialize obj = nil
-        __setobj__(obj || self.class.data_class.new)
+        __setobj__(obj || self.class.data_source.new)
       end
     end
   end
 
   class Format < Delegator 
     include DataDelegation
-    #silence_warnings { undef :initialize }
   end
 end

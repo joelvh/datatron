@@ -1,9 +1,8 @@
+require 'datatron/transform_methods'
+
 module Datatron
   class Transform
-    def self.const_missing const
-      Datatron::Formats.const_get const
-    end
-
+    extend Forwardable
     include TransformMethods
 
     module FuzzyInclude
@@ -12,19 +11,27 @@ module Datatron
       end
     end
 
-    attr_accessor :finder
+    class EmptyTranslator
+      include Singleton
+      [:source, :destination].each do |op|
+        define_method(op) do |field|
+          return nil
+        end
+      end
+    end
+
+    attr_accessor :finder, :router
+    
+    def_delegator :@translator, :source
+    def_delegator :@translator, :destination
 
     def initialize strategy, *args, &block 
-      strat = self.class.strategies[strategy]
       options = (args.pop if args.last.is_a? Hash) || {}
       @current = :ready
       @strategy_hash = HashWithIndifferentAccess.new(:from => {}, :to => {}) 
+      @translator = EmptyTranslator.instance
 
-      init_blocks = [strat[:block]]
-      init_blocks << block unless block.nil?
-      init_blocks.each do |b|
-        instance_exec args.slice(0,b.arity), &b
-      end
+      instance_exec args.slice(0,block.arity), &block
 
       options.reverse_merge!({:to => @to_source, 
                               :keys => :keys,
@@ -41,17 +48,9 @@ module Datatron
           end
         end
       end
-  
-      #remove the DSL state tracking variables
-      [:@current, :@current_field].each do |i|
-        remove_instance_variable i
-      end
-    end
 
-    def modify *args, &block
-      @current = :ready
-      instance_exec args.slice(0,block.arity), &block
-      remove_instance_variable :@current
+      #remove the DSL state tracking variables
+      self.current_status = nil,nil
     end
 
     def transform key
@@ -69,7 +68,8 @@ module Datatron
         raise TranslationKeyError, "Don't know anything about #{key}" 
       end
     end
-    
+   
+    # i don't think i'm going to need any of these
     def all_keys
       #all key values that I know how do something with.
       @origin_fields | @destination_fields 
@@ -134,19 +134,6 @@ module Datatron
       @implicit_keys = all_keys.reject do |v|
        from_field.any? { |kp| kp === v } || to_field.values.any? { |kp| kp === v }
       end
-    end
-   
-    def self.transition_valid? from, to
-      unless @transition_table
-        @transition_table = {  
-          :ready => [:to, :from],
-          :to => [:from, :through, :using, :ready],
-          :from => [:to, :through, :ready]
-        }
-        @transition_table.default = [:ready]
-      end
-        
-      @transition_table[from].include?(to) ? true : false
     end
   end
 end

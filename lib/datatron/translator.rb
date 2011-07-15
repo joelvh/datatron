@@ -1,10 +1,23 @@
 module Datatron
   class Translator
+    include Translation
+
+    module DataInterface
+      include Translation
+      extend Forwardable
+
+      @translator = EmptyTranslator.instance
+      attr_accessor :translator
+      
+      def_delegator :@translator, :source
+      def_delegator :@translator, :destination
+    end
+
     module StrategyInterface
       attr_accessor :source_item, :strategy, :dest_item
       def translate
         #the basic principle here is that the Translator
-        # asks the "Transform" what to do with each key?
+        # asks the "Strategy" what to do with each key?
         # where do I get the information for this attribute?
         # The transform ansers "get it from here"
         # Or "get it from the column of the samn name"
@@ -39,30 +52,37 @@ module Datatron
         if dest_item.respond_to? :valid? and dest_item.valid?
           dest_item.save
         else
-          raise ActiveRecord::RecordInvalid, ar_item 
+          raise Datatron::RecordInvalid, ar_item 
         end
       end
     end
+
+    cattr_accessor :strategy
    
     class << self
-      attr_accessor :strategy
-
-      def with_strategy strategy
+      
+      def with_strategy strat
         klass = Class.new(self) do
+          
           include StrategyInterface
-          @strategy = strategy
-
+          self.strategy = strat
+          self.strategy.extend DataInterface
+               
           def initialize
             @strategy = self.class.strategy
 
-            @source_item = strategy.from_source.next unless strategy.finder 
-            @dest_item = strategy.to_source.new unless strategy.router
+            @strategy.translator = self
+
+            @source = @strategy.from_source.next unless strategy.finder 
+            @destination = @strategy.to_source.new unless strategy.router
             
-            @source_item = strategy.from_source.finder.call(@dest_item) if strategy.finder
-            @dest_item = strategy.to_source.destination.call(@source_item) if strategy.router
+            @source = @strategy.from_source.finder.call(@dest_item) if strategy.finder
+            @destination = @strategy.to_source.destination.call(@source_item) if strategy.router
           end
         end
-        # this will raise an error if the class already exsists.
+        # this will issue a warning if the class already exsists.
+        debugger
+        1
         const_set (klass.strategy.base_name.singularize.camelize + "Translator").intern, klass
         klass
       end

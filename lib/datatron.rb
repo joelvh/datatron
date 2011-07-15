@@ -19,7 +19,7 @@ module Datatron
     end
   end
   
-  autoload :Transform,   'datatron/transform'
+  autoload :Strategy,   'datatron/strategy'
   autoload :Translator,  'datatron/translator'
   autoload :Converter,   'datatron/converter'
   autoload :Format,      'datatron/format'
@@ -39,6 +39,7 @@ module Datatron
 
   class DatatronError < StandardError; end
   class DataSourceNotFound < DatatronError; end
+  class RecordInvalid < DatatronError; end 
 
   module Formats
     include LiveConstants 
@@ -58,12 +59,12 @@ module Datatron
   end
 
   include LiveConstants 
-  def transforms
+  def strategies 
     live_constants do |klass|
-      klass.is_a? Class and klass < Datatron::Transform
+      klass.is_a? Class and klass < Datatron::Strategy
     end
   end
-  module_function :transforms
+  module_function :strategies
 
   class InvalidTransition < DatatronError; end
   class TranslationFormatError < DatatronError; end

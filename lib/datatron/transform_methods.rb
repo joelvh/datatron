@@ -1,7 +1,13 @@
 module Datatron
-
-  module TransformMethods
-    extend ActiveSupport::Concern
+  module Translation
+    class EmptyTranslator
+      include Singleton
+      [:source, :destination].each do |op|
+        define_method(op) do |field|
+          raise DatatronError, "Strategy is not part of a translator!" 
+        end
+      end
+    end
     
     class TranslationAction
       include ::Singleton
@@ -10,14 +16,37 @@ module Datatron
     class AwaitingTranslationAction < TranslationAction; end
     class CopyTranslationAction < TranslationAction; end
     class DiscardTranslationAction < TranslationAction; end
+    
+    class UsingTranslationAction < TranslationAction
+      class << self
+        def substrategy parent, *args, strat, &block
+          klass = Class.new(Delegator) do
+            def substrategy?
+              true
+            end
+            
+            define_method :initialize do
+              super
+              @strategy = strat
+              @strategy.modify *args, &block
+              @parent_binding = parent.binding
+            end
 
-    class UsingTranslationAction
-      attr_accessor :strategy
-      def initialize *args, strat, &block
-        @strategy = strat
-        @strategy.modify *args, &block
+            def __getobj__
+              @strategy
+            end
+
+            def __setobj__(obj)
+              raise ArgumentError, "Sorry, can't redelegate a substrategy"
+            end
+          end
+        end
       end
     end
+  end
+
+  module TransformMethods
+    extend ActiveSupport::Concern
     
     module ClassMethods
       def method_missing meth, *args, &block
@@ -67,10 +96,32 @@ module Datatron
 
     #DSL Methods
     module InstanceMethods
-      #cause I get sick of fucking typing it
-      
+      include Translation
+
       attr_accessor :finder
       attr_accessor :router
+
+      def initialize strategy, *args, &block
+        options = (args.pop if args.last.is_a? Hash) || {}
+        @current = :ready
+        instance_exec args.slice(0,block.arity), &block
+        
+        options.reverse_merge!({:to => @to_source, 
+                                :keys => :keys,
+                                :from => @from_source,
+                                :from_keys => :keys})
+
+
+        [:to, :from].each do |op|
+          model, source = ["model","source"].collect { |s| "#{op}_#{s}".intern }
+          unless(options[op] == __send__(source)) then
+            __send__ source, options[op]
+            unless __send__ source
+              raise ArgumentError, "Couldn't find #{model} subclass for #{self.class}"
+            end
+          end
+        end
+      end
 
       def base_name
         self.class.base_name
@@ -178,7 +229,7 @@ module Datatron
 
       def using *args, strategy, &block
         op_field, state = current_field, current_status
-        @strategy_hash[state][op_field] = UsingTranslationAction.new(*args, strategy, &block)
+        @strategy_hash[state][op_field] = UsingTranslationAction.substrategy(self,*args, strategy, &block)
         self.current_status = :ready, nil
       end
 
@@ -194,7 +245,7 @@ module Datatron
         self.current_status = :ready, nil
       end
 
-      def find *args, &block 
+      def find *args, &block
         @finder = [args, block]
       end
 
@@ -203,9 +254,70 @@ module Datatron
           @router = block
         else
           @router = [field, block]
-          @strategy_hash[:to][field] = WeakRef.new @router
+          @strategy_hash[:to][field] = @router
         end
       end
+    end
+  end
+
+  class HashWithOrderCallback < HashWithIndifferentAccess
+    include ActiveSupport::Callbacks
+
+    class OrderHash < Hash
+      attr_accessor :root
+      def initialize(hash_obj)
+        @root = hash_obj
+      end
+    end
+    
+    def store_order key 
+      puts key.__id__
+      puts self.__id__
+      puts [key,self].hash
+      puts "\n"
+
+      hash_key = [key,self].hash
+      @order.delete hash_key if @order.has_key? hash_key 
+      path = @order.root.path self
+      @order[hash_key] = path == true ? [key] : path.push(key)
+    end
+   
+    def path val = nil, key_path = [], &block
+      raise ArgumentError, "search value or block required" if block.nil? and val.nil?
+      return true if (yield(val) unless block.nil?) or val == self
+
+      self.each do |k,v|
+        if (yield v unless block.nil?) or v == val
+          key_path << k 
+          break
+        elsif v.respond_to? :path
+          if v.path(val, key_path, &block)
+            key_path.unshift(k)
+            break
+          end
+        end
+      end
+      return false if key_path.empty?
+      key_path
+    end
+
+    attr_reader :order
+    
+    def initialize()
+      @order = OrderHash.new(self) 
+      super
+    end
+
+    def []= key, value
+      if value.respond_to? :order
+        value.instance_exec(self.order) do |oa|
+          @order = oa
+        end
+      end
+
+      super
+      store_order key
+      value
     end
   end
 end

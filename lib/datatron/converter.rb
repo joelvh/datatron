@@ -11,7 +11,7 @@ module Datatron
     end
 
     def << conv
-      raise DatatronError, "Need Transform subclass" unless conv.kind_of? Datatron::Transform
+      raise DatatronError, "Need Strategy subclass" unless conv.kind_of? Datatron::Strategy
       requested_conversions << conv
     end
 

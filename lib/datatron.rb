@@ -10,6 +10,9 @@ require 'singleton'
 require 'set'
 require 'forwardable'
 
+#gem dependency
+require 'order_tree'
+
 module Datatron
   if defined? Rails
     class DatatronTasks < Rails::Railtie
@@ -69,7 +72,6 @@ module Datatron
   class InvalidTransition < DatatronError; end
   class TranslationFormatError < DatatronError; end
   class TranslationKeyError < DatatronError; end 
-
 end
 
 # I concur.

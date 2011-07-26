@@ -21,15 +21,19 @@ module Datatron
       class << self
         def substrategy parent, *args, strat, &block
           klass = Class.new(Delegator) do
-            def substrategy?
+            define_singleton_method :substrategy? do
               true
+            end
+
+            def substrategy?
+              self.class.substrategy?
             end
             
             define_method :initialize do
-              super
               @strategy = strat
               @strategy.modify *args, &block
-              @parent_binding = parent.binding
+              super(@strategy)
+              @parent_binding = parent.send :binding
             end
 
             def __getobj__
@@ -37,7 +41,7 @@ module Datatron
             end
 
             def __setobj__(obj)
-              raise ArgumentError, "Sorry, can't redelegate a substrategy"
+              @strategy = obj 
             end
           end
         end
@@ -169,14 +173,18 @@ module Datatron
         define_method op do |field, &block|
           op_field = @current_field
           self.current_status = op, field
-          if @strategy_hash[inverse_op].has_key? field
-            unless @strategy_hash[inverse_op][field] == AwaitingTranslationAction.instance
+          if @strategy_hash[inverse_op,field]
+            unless @strategy_hash[inverse_op,field] == AwaitingTranslationAction.instance
               raise InvalidTransition, "#{inverse_op} action for #{field} is already defined"
             end
-          elsif @strategy_hash[inverse_op].has_key? op_field
-            @strategy_hash[inverse_op][op_field] = !block.nil? ? { field => block } : field.to_s
+          elsif @strategy_hash[inverse_op, op_field]
+            unless block.nil?
+              @strategy_hash.store(inverse_op, op_field, { field => block })
+            else
+              @strategy_hash[inverse_op,op_field] = field.to_s
+            end
           else 
-            @strategy_hash[op][field] = block || AwaitingTranslationAction.instance 
+            @strategy_hash[op, field] = block || AwaitingTranslationAction.instance 
           end
           
           #don't put "done" after to / from with blocks
@@ -185,7 +193,7 @@ module Datatron
 
         define_method "#{op}_model".intern do |model = nil|
           if model 
-            raise ::ArgumentError, "Datatron::Format class expected got #{model.class}" unless #{model} < Datatron::Format
+            raise ::ArgumentError, "Datatron::Format class expected got #{model.class}" unless model < Datatron::Format
             instance_variable_set "@#{op}_model", model
             __send__ "#{op}_source".intern, self.base_name
           else
@@ -200,6 +208,7 @@ module Datatron
             source_class = model.subclasses.find(new_model) do |sc|
               sc.base_name == source
             end
+            raise "wtf" unless source_class < Datatron::Format
             instance_variable_set "@#{op}_source", source_class
           else
             instance_variable_get "@#{op}_source"

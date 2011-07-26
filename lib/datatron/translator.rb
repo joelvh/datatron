@@ -1,21 +1,10 @@
 module Datatron
   class Translator
     include Translation
-
-    module DataInterface
-      include Translation
-      extend Forwardable
-
-      @translator = EmptyTranslator.instance
-      attr_accessor :translator
-      
-      def_delegator :@translator, :source
-      def_delegator :@translator, :destination
-    end
-
+    
     module StrategyInterface
-      attr_accessor :source_item, :strategy, :dest_item
-      def translate
+      include Translation
+      def translate_item
         #the basic principle here is that the Translator
         # asks the "Strategy" what to do with each key?
         # where do I get the information for this attribute?
@@ -25,34 +14,72 @@ module Datatron
         # first
         # Or "Just tell the record item you'd like it populated."
         # or "Different step - ask for it to be done."
-        source_item.attribute_names.each do |k|
-          source_key = strategy.transform k
-          case source_key
-            when String
-              source_item.attributes[k] = data_row[source_key]
-            when Hash
-              source_item.attributes[k] = source_key.to_a 
-            when TrueClass
-              source_item.attributes[k] = data_row[k]
-            when FalseClass
-              #do nothing
-            when Proc
-              source_item.attributes[k] = source_key[data_row[k]]
-            when UsingTranslationAction
-              # do this one next, but wrap it in the same transaction
-              # and 
-              debugger
-              1
+
+        strategy.strategy_hash.each_pair do |p,v|
+          type = p.shift
+          next if p.empty?
+          
+          op_field = p.shift
+          if op_field.is_a? Regexp
+            model = type == :from ? :from_model : :to_model
+            op_fields = strategy.send(model).keys.select { |v| op_field.match v}
+          else
+            op_fields = [op_field]
+          end
+
+          strat_process_lambda = lambda do |c_field|
+            if type == :from
+              d_field = v.to_s
+              s_field = c_field.to_s
+              proc_macro = lambda do |field, prok|
+                destination[field.to_s] = prok.call(source[s_field])
+              end
+            elsif type == :to
+              d_field = c_field.to_s
+              s_field = v.to_s
+              proc_macro = lambda do |field, prok|
+                destination[s_field] = prok.call(field.to_s)
+              end
+            end
+            
+            case v
+              when SymbolString
+                destination[d_field] = source[s_field]
+              when Hash
+                proc_macro[*v.first].call
+              when CopyTranslationAction
+                destination[d_field] = source[d_field]
+              when DiscardTranslationAction
+                next
+              when Proc
+                v.call(source[c_field])
+              when v.substrategy?
+                debugger
+            end
+          end
+              
+
+          op_fields.collect do |field|
+            strat_process_lambda.call field
           end
         end
+
       end
     
-      def translate!
-        translate
-        if dest_item.respond_to? :valid? and dest_item.valid?
-          dest_item.save
-        else
-          raise Datatron::RecordInvalid, ar_item 
+      def translate_item!
+        translate_item
+        if dest.respond_to? :valid? 
+          raise Datatron::RecordInvalid, dest unless dest.valid?
+        end
+        dest.save
+      end
+
+      def translate
+        self.each do |s,d|
+          # we don't actually need to pass
+          # s,d here, since they're available
+          # as accessor source, destination
+          translate_item
         end
       end
     end
@@ -63,26 +90,41 @@ module Datatron
       
       def with_strategy strat
         klass = Class.new(self) do
-          
           include StrategyInterface
           self.strategy = strat
-          self.strategy.extend DataInterface
                
           def initialize
-            @strategy = self.class.strategy
+            @strategy = self.class.strategy.dup
+          end
 
-            @strategy.translator = self
+          attr_reader :source, :destination
 
-            @source = @strategy.from_source.next unless strategy.finder 
-            @destination = @strategy.to_source.new unless strategy.router
-            
-            @source = @strategy.from_source.finder.call(@dest_item) if strategy.finder
-            @destination = @strategy.to_source.destination.call(@source_item) if strategy.router
+          def items 
+            puts strategy.to_source
+            puts strategy.from_source
+
+            if strategy.finder
+              @destination = strategy.to_source.new 
+              @source = strategy.from_source.finder.call(@destination)
+            elsif strategy.router
+              @source = strategy.from_source.next
+              @destination = strategy.to_source.destination.call(@source)
+            else
+              @destination = strategy.to_source.new 
+              @source = strategy.from_source.next
+            end
+              
+            return @source, @destination
+          end
+
+          def each 
+            return enum_for(:each) unless block_given?
+            while ia = items 
+             yield ia
+            end
           end
         end
         # this will issue a warning if the class already exsists.
-        debugger
-        1
         const_set (klass.strategy.base_name.singularize.camelize + "Translator").intern, klass
         klass
       end

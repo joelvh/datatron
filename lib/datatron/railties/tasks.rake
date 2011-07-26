@@ -33,7 +33,7 @@ namespace :datatron do
           memo.last << b.strip
         end
       rescue StandardError => e
-        raise ArgumentError, "Can't figure out what argument #{b} is supposed to be. Did you create a Transform Class?"
+        raise ArgumentError, "Can't figure out what argument #{b} is supposed to be. Did you create a Strategy Class?"
       end
     end
 

@@ -24,17 +24,14 @@ module Datatron
             define_method :initialize do
               super(strat.name)
               @parent = parent
-              
-              args.each do |a|
+              collected_args = args.collect do |a|
                 a.send_to @parent if a.is_a? DeferredMethodCall
               end
-
               modify collected_args, &block
             end
           end
           # this is not strictly necessary, but it makes it prettier to look at.
           const_set (parent.base_name.singularize.camelize + strat.base_name.singularize.camelize).intern, klass
-          klass.new
         end
       end
     end

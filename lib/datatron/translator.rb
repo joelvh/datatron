@@ -76,9 +76,10 @@ module Datatron
                 destination[d_field] = source[d_field]
               when DiscardTranslationAction
                 next
-              when Strategy 
+              when Strategy
                 debugger
-                Datatron::Translator.with_strategy(v).new.translate
+                1
+                Datatron::Translator.with_strategy(v.new).new.translate
               end
           end
               

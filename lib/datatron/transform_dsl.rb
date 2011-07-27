@@ -58,7 +58,13 @@ module Datatron
       end
 
       def strategies
-        @strategies
+        strats = []
+        klass = self.class
+        while klass
+          class_strats = klass.instance_eval { @strategies }
+          strats.concat class_strats if class_strats
+          klass = klass.superclass
+        end
       end
 
       def base_name

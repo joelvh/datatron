@@ -1,9 +1,19 @@
-require 'datatron/transform_methods'
-require 'order_tree'
-
 module Datatron
   class Strategy 
-    include TransformMethods
+    include Datatron::TransformDSL
+
+    class << self
+      def === obj
+        if obj.is_a? self
+          return true
+        elsif obj < self
+          return true
+        else
+          return false
+        end
+      end
+    end
+          
     
     attr_accessor :strategy_hash
     

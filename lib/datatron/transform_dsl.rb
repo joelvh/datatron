@@ -1,56 +1,25 @@
 module Datatron
-  module Translation
-    class EmptyTranslator
-      include Singleton
-      [:source, :destination].each do |op|
-        define_method(op) do |field|
-          raise DatatronError, "Strategy is not part of a translator!" 
-        end
-      end
-    end
-    
-    class TranslationAction
-      include ::Singleton
-    end
-    
-    class AwaitingTranslationAction < TranslationAction; end
-    class CopyTranslationAction < TranslationAction; end
-    class DiscardTranslationAction < TranslationAction; end
-    
-    class UsingTranslationAction < TranslationAction
-      class << self
-        def substrategy parent, *args, strat, &block
-          klass = Class.new(Delegator) do
-            define_singleton_method :substrategy? do
-              true
-            end
-
-            def substrategy?
-              self.class.substrategy?
-            end
-            
-            define_method :initialize do
-              @strategy = strat
-              @strategy.modify *args, &block
-              super(@strategy)
-              @parent_binding = parent.send :binding
-            end
-
-            def __getobj__
-              @strategy
-            end
-
-            def __setobj__(obj)
-              @strategy = obj 
-            end
-          end
-        end
-      end
-    end
-  end
-
-  module TransformMethods
+  module TransformDSL
     extend ActiveSupport::Concern
+
+    class DeferredMethodCall < BasicObject 
+      attr_accessor :method, :args, :block
+      
+      def initialize method, args, &block
+        @method = method
+        @args = args
+        @block = block
+      end
+
+      def send_to obj
+        @obj = obj
+      end
+
+      def method_missing method, *args, &block
+        t = @obj.__send__ @method, *@args, &@block
+        t.__send__ method, *args, &block
+      end
+    end
     
     module ClassMethods
       def method_missing meth, *args, &block
@@ -74,7 +43,7 @@ module Datatron
 
         unless @transition_table
           @transition_table = {  
-            :ready => [:to, :from],
+            :ready => [:to, :from, :ready],
             :to => [:from, :through, :using, :ready],
             :from => [:to, :through, :ready]
           }
@@ -100,12 +69,14 @@ module Datatron
 
     #DSL Methods
     module InstanceMethods
-      include Translation
+      include Datatron::Translation
 
       attr_accessor :finder
       attr_accessor :router
+      attr_accessor :name
 
       def initialize strategy, *args, &block
+        @name = strategy
         options = (args.pop if args.last.is_a? Hash) || {}
         @current = :ready
         instance_exec args.slice(0,block.arity), &block
@@ -193,7 +164,11 @@ module Datatron
 
         define_method "#{op}_model".intern do |model = nil|
           if model 
-            raise ::ArgumentError, "Datatron::Format class expected got #{model.class}" unless model < Datatron::Format
+            begin
+              model < Datatron::Format
+            rescue ::ArgumentError
+              raise ::ArgumentError, "Datatron::Format class expected got #{model.class}" 
+            end
             instance_variable_set "@#{op}_model", model
             __send__ "#{op}_source".intern, self.base_name
           else
@@ -204,11 +179,16 @@ module Datatron
         define_method "#{op}_source".intern do |source = nil|
           if source
             model = __send__ "#{op}_model".intern
-            new_model = lambda { model.from(source)}
+            new_model = lambda { model.from(source) }
             source_class = model.subclasses.find(new_model) do |sc|
               sc.base_name == source
             end
-            raise "wtf" unless source_class < Datatron::Format
+            #and this is why we require activesupport
+            begin
+              source_class < Datatron::Format
+            rescue ::ArgumentError
+              raise ::ArgumentError, "Datatron::Format class expected got #{source_class.class}" 
+            end
             instance_variable_set "@#{op}_source", source_class
           else
             instance_variable_get "@#{op}_source"
@@ -229,16 +209,16 @@ module Datatron
 
       def otherwise method
         case method
-          when :copy
+          when :copy, :same
             @strategy_hash.default = CopyTranslationAction.instance
-          when :discard
+          when :discard, :delete, :ignore
             @strategy_hash.default = DiscardTranslationAction.instance
         end
       end
 
-      def using *args, strategy, &block
+      def using strategy, *args, &block
         op_field, state = current_field, current_status
-        @strategy_hash[state][op_field] = UsingTranslationAction.substrategy(self,*args, strategy, &block)
+        @strategy_hash[state][op_field] = UsingTranslationAction.substrategy(self, strategy, *args, &block)
         self.current_status = :ready, nil
       end
 
@@ -253,17 +233,21 @@ module Datatron
       ensure
         self.current_status = :ready, nil
       end
+      alias :ignore :delete
 
       def find *args, &block
         @finder = [args, block]
       end
 
-      def destination field, &block
-        unless field
-          @router = block
+      def route *args, &block
+        @router = [args, block]
+      end
+
+      def method_missing method, *args, &block
+        if [:source, :destination].include? method
+          DeferredMethodCall.new(method, args, &block)
         else
-          @router = [field, block]
-          @strategy_hash[:to][field] = @router
+          super
         end
       end
     end

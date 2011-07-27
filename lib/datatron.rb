@@ -22,10 +22,12 @@ module Datatron
     end
   end
   
-  autoload :Strategy,   'datatron/strategy'
-  autoload :Translator,  'datatron/translator'
-  autoload :Converter,   'datatron/converter'
-  autoload :Format,      'datatron/format'
+  autoload :Strategy,      'datatron/strategy'
+  autoload :TransformDSL,  'datatron/transform_dsl'
+  autoload :Translation,   'datatron/translation'
+  autoload :Translator,    'datatron/translator'
+  autoload :Converter,     'datatron/converter'
+  autoload :Format,        'datatron/format'
 
   module LiveConstants 
     extend ActiveSupport::Concern

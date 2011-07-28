@@ -3,24 +3,12 @@ module Datatron
     extend ActiveSupport::Concern
 
     module ClassMethods
-      def keys &block
-        raise NotImplementedError,"#{__method__} called for the first time without a block" if block.nil?
-        define_singleton_method :keys, &block
-      end
-
-      def each &block
-        raise NotImplementedError,"#{__method__} called for the first time without a block" if block.nil?
-        define_singleton_method :each do
-          Enumerator.new do |y|
-            block.call(y)
-          end
+      [:from, :keys, :each].map do |k|
+        define_method k do
+          raise NotImplementedError,"Subclasses of Datatron::Format should implement #{k}"
         end
       end
-
-      def from 
-        raise NotImplementedError,"Subclasses of Datatron::Format should implement #new"
-      end
-
+          
       def next
         @data ||= self.each
         @data.next
@@ -28,9 +16,11 @@ module Datatron
 
       def rewind
         @data = nil
+        yield if block_given?
       end
 
       attr_accessor :data_source
+      attr_accessor :data
       attr_accessor :base_name
 
       alias :column_names :keys

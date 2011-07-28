@@ -4,7 +4,7 @@ module Datatron
       include Singleton
       [:source, :destination].each do |op|
         define_method(op) do |field|
-          raise DatatronError, "Strategy is not part of a translator!" 
+          raise DatatronError, "Strategy is not part of a translator! #{op} is not available!" 
         end
       end
     end
@@ -18,20 +18,32 @@ module Datatron
     class DiscardTranslationAction < TranslationAction; end
     
     class UsingTranslationAction < TranslationAction
+      module SubStrategy
+        attr_accessor :parent
+        def extended obj
+          obj.instance_eval do
+            @parent = nil
+          end
+        end
+      end
+      
       class << self
         def substrategy parent, strat, *args, &block
-          klass = Class.new(strat) do
-            define_method :initialize do
-              super(strat.name)
-              @parent = parent
-              collected_args = args.collect do |a|
-                a.send_to @parent if a.is_a? DeferredMethodCall
-              end
-              modify collected_args, &block
+          #retrive the strategy if it doesn't exist, or create it
+          #using the supplied block
+          strategy_name = "for_#{parent.base_name}_#{parent.name}".intern
+          begin
+            strat_instance = strat.send strategy_name
+          rescue NoMethodError => e
+            if e.name == strategy_name
+              strat.send "for_#{parent.base_name}_#{parent.name}".intern, *args, &block
+              retry
+            else
+              raise e
             end
           end
-          # this is not strictly necessary, but it makes it prettier to look at.
-          const_set (parent.base_name.singularize.camelize + strat.base_name.singularize.camelize).intern, klass
+          strat_instance.extend SubStrategy
+          strat_instance
         end
       end
     end

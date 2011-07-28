@@ -15,7 +15,7 @@ module Datatron
         end
 
         def initialize obj = nil
-          __setobj__(obj || Hash[self.class.keys.zip([])])
+          __setobj__(obj || HashWithIndifferentAcess[self.class.keys.zip([])])
         end
       end
     end
@@ -33,6 +33,7 @@ module Datatron
 
           class_name = filename.split(/\/|\./)[-2] #last elements without the extension
           data_class class_name do |c|
+            
             c.send :include, TabFileMethods
             @seperator = seperator
             
@@ -42,41 +43,51 @@ module Datatron
 
             c.data_source = @fd
 
-            keys do
-              return @keys if @keys
-              fd.rewind if fd.lineno != 0
-              @keys = fd.readline(self.seperator).chomp.split("\t",-1)
-            end
-
-            each do |y|
-              fd.readlines(self.seperator).each do |l|
-                vals = l.chomp.split("\t",-1)
-                next if vals == keys
-                obj = Hash[self.keys.zip(vals)]
-                y.yield self.new obj
-              end
-            end
-
             class << c
               attr_accessor :seperator
 
-              def rewind
-                @data = nil
-                fd.rewind
-                true
+              def keys
+                return @keys if @keys
+                fd.rewind if fd.lineno != 0
+                @keys = fd.readline(self.seperator).chomp.split("\t",-1)
               end
-              
-              def find all = :first, &block
-                @data = nil
+
+              def each
+                return enum_for(:each) unless block_given?
+                fd.readlines(self.seperator).each do |l|
+                  vals = l.chomp.split("\t",-1)
+                  next if vals == keys
+                  obj = HashWithIndifferentAccess[self.keys.map(&:intern).zip(vals)]
+                  yield self.new(obj)
+                end
+              end
+
+              def rewind
                 fd.rewind
-                memo = self.each.with_object [] do |row, memo|
-                  if block.call(row)
-                    all == :all ? memo.push(row) : (return row)
+                super
+              end
+
+              def _finder *args, &block
+                rewind do
+                  self.data = Enumerator.new do |y|
+                    self.each do |row|
+                      r = block.call(row, *args)
+                      y << r if r
+                    end
                   end
                 end
+              end
+              private :_finder
+
+              def find all = :first, &block
+                return enum_for(:_find) unless block_given?
+                if all == :first
+                  memo = _finder(block).next
+                  rewind
+                else
+                  memo = _finder(block).to_a
+                end
                 return memo.empty? ? nil : memo
-              ensure
-                rewind
               end
             end
           end

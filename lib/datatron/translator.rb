@@ -65,21 +65,25 @@ module Datatron
                 destination[s_field] = prok.call(field.to_s)
               end
             end
-        
-            puts c_field
+            
+            puts source
             case v
               when Symbol, String
+                puts "moved"
                 destination[d_field] = source[s_field]
               when Hash
+                puts "moved with transform"
                 destination[d_field] = proc_macro.call(*v.first)
               when CopyTranslationAction
+                puts "copied"
                 destination[d_field] = source[d_field]
               when DiscardTranslationAction
+                puts "discarded"
                 next
               when Strategy
-                debugger
-                1
-                Datatron::Translator.with_strategy(v.new).new.translate
+                puts "substragey"
+                v.parent = self
+                Datatron::Translator.with_strategy(v).translate
               end
           end
               
@@ -93,10 +97,10 @@ module Datatron
     
       def translate_item!
         translate_item
-        if dest.respond_to? :valid? 
+        if destination.respond_to? :valid? 
           raise Datatron::RecordInvalid, dest unless dest.valid?
         end
-        dest.save
+        destination.save
       end
 
       def translate
@@ -105,6 +109,7 @@ module Datatron
           # s,d here, since they're available
           # as accessor source, destination
           translate_item
+          destination.save
         end
       end
     end
@@ -117,7 +122,7 @@ module Datatron
         klass = Class.new(self) do
 
           include StrategyInterface
-          self.strategy = strat.dup
+          self.strategy = strat.clone
           self.strategy.extend DataInterface
                
           def initialize
@@ -128,32 +133,35 @@ module Datatron
           attr_reader :source, :destination
 
           def items 
+            strategy.from_source.rewind
+            
             if strategy.finder
-              @destination = strategy.to_source.new 
-              args, finder_proc = *strategy.finder 
-              @source = strategy.from_source.find *args.concat(@destination), finder_proc
-            elsif strategy.router
-              @source = strategy.from_source.next
-              args, router_proc = *strategy.router
-              @destination = strategy.to_source.find *args.concat(@source), router_proc
-            else
-              @destination = strategy.to_source.new 
-              @source = strategy.from_source.next
+              args, finder_proc = strategy.finder
+              strategy.from_source.send :_finder, *args, &finder_proc
             end
+
+            @destination = strategy.to_source.new 
+            
+            if strategy.router
+              args, dest_proc = strategy.router
+              @destination.define_singleton_method :save, *args, &dest_proc
+            end
+          
+            @source = strategy.from_source.next
               
             return @source, @destination
           end
 
           def each 
             return enum_for(:each) unless block_given?
-            while ia = items 
-             yield ia
+            loop do
+             yield items
             end
           end
         end
         # this will issue a warning if the class already exsists.
         const_set (klass.strategy.base_name.singularize.camelize + "Translator").intern, klass
-        klass
+        klass.new
       end
     end
   end

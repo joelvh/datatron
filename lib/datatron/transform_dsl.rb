@@ -2,25 +2,6 @@ module Datatron
   module TransformDSL
     extend ActiveSupport::Concern
 
-    class DeferredMethodCall < BasicObject 
-      attr_accessor :method, :args, :block
-      
-      def initialize method, args, &block
-        @method = method
-        @args = args
-        @block = block
-      end
-
-      def send_to obj
-        @obj = obj
-      end
-
-      def method_missing method, *args, &block
-        t = @obj.__send__ @method, *@args, &@block
-        t.__send__ method, *args, &block
-      end
-    end
-    
     module ClassMethods
       def method_missing meth, *args, &block
         args.push({}) if args.empty?
@@ -58,13 +39,14 @@ module Datatron
       end
 
       def strategies
-        strats = []
-        klass = self.class
+        strats = HashWithIndifferentAccess.new {} 
+        klass = self
         while klass
           class_strats = klass.instance_eval { @strategies }
-          strats.concat class_strats if class_strats
+          strats.reverse_merge! class_strats if class_strats
           klass = klass.superclass
         end
+        strats
       end
 
       def base_name
@@ -247,14 +229,6 @@ module Datatron
 
       def route *args, &block
         @router = [args, block]
-      end
-
-      def method_missing method, *args, &block
-        if [:source, :destination].include? method
-          DeferredMethodCall.new(method, args, &block)
-        else
-          super
-        end
       end
     end
   end

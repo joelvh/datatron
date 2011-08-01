@@ -24,9 +24,9 @@ module Datatron
 
         unless @transition_table
           @transition_table = {  
-            :ready => [:to, :from, :ready],
-            :to => [:from, :through, :using, :ready],
-            :from => [:to, :through, :ready]
+            :ready => [:to, :from, :ready, :error],
+            :to => [:from, :through, :using, :error, :ready],
+            :from => [:to, :through, :error, :ready]
           }
           @transition_table.default = [:ready]
         end
@@ -183,6 +183,19 @@ module Datatron
           end 
         end
       end
+
+      def error &block
+        op, field = self.current_status, self.current_field
+        
+        if [:to, :from].include? op then
+          @strategy_hash[op][field][:error] = block
+        elsif op == :ready
+          @strategy_hash[:error] = block
+        else
+          raise InvalidTransition, "error must be associated with an operation or freestanding."
+        end
+      end
+          
 
       def through method = nil, &block
         raise ArgumentError, "Through can take a block or a method name, but not both" if block_given? and method.nil?

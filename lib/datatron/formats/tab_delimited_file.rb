@@ -57,7 +57,7 @@ module Datatron
                 fd.readlines(self.seperator).each do |l|
                   vals = l.chomp.split("\t",-1)
                   next if vals == keys
-                  obj = HashWithIndifferentAccess[self.keys.map(&:intern).zip(vals)]
+                  obj = HashWithIndifferentAccess[self.keys.zip(vals)]
                   yield self.new(obj)
                 end
               end

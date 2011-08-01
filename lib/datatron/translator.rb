@@ -1,7 +1,9 @@
 module Datatron
   class Translator
     include Translation
-   
+    Action = Struct.new(:value, :destination_field, :source_field, :proc_macro)
+    
+    
     #this module is mixed into the strategy instance
     #at runtime to provide access to the current source
     #and current destination items via the #source
@@ -28,6 +30,27 @@ module Datatron
     # and interface to the strategy object
     module StrategyInterface
       include Translation
+
+      def process_field action 
+        case action.value 
+          when Symbol, String
+            destination[action.destination_field] = source[action.source_field]
+          when Hash
+            destination[action.destination_field] = action.proc_macro.call(*action.value.first)
+          when CopyTranslationAction
+            destination[action.destination_field] = source[action.destination_field]
+          when DiscardTranslationAction
+            return nil
+          when Strategy
+            action.value.parent = self
+            debugger
+            1
+            Datatron::Translator.with_strategy(action.value).translate
+        end
+        true
+      end
+      private :process_field
+
       def translate_item
         #the basic principle here is that the Translator
         # asks the "Strategy" what to do with each key?
@@ -38,58 +61,45 @@ module Datatron
         # firstkkj
         # Or "Just tell the record item you'd like it populated."
         # or "Different step - ask for it to be done."
-
+        #
+        
         strategy.strategy_hash.each_pair do |p,v|
           type = p.shift
           next if p.empty?
           
           op_field = p.shift
+          
           if op_field.is_a? Regexp
             model = type == :from ? :from_source : :to_source
             op_fields = strategy.send(model).keys.select { |v| op_field.match v}
+          elsif op_field.is_a? Array
+            op_fields.concat op_field
           else
             op_fields = [op_field]
           end
+          
+          
+          op_fields.collect do |field|
 
-          strat_process_lambda = lambda do |c_field|
+            action = Action.new
+            
             if type == :from
-              d_field = v.to_s
-              s_field = c_field.to_s
-              proc_macro = lambda do |field, prok|
-                destination[field.to_s] = prok.call(source[s_field])
+              action.destination_field = v.to_s
+              action.source_field = field.to_s
+              action.proc_macro = lambda do |proc_field, prok|
+                destination[proc_field.to_s] = prok.call(source[action.source_field])
               end
             elsif type == :to
-              d_field = c_field.to_s
-              s_field = v.to_s
-              proc_macro = lambda do |field, prok|
-                destination[s_field] = prok.call(field.to_s)
+              action.destination_field = field.to_s
+              action.source_field = v.to_s
+              action.proc_macro = lambda do |proc_field, prok|
+                destination[action.source_field] = prok.call(proc_field.to_s)
               end
             end
-            
-            puts source
-            case v
-              when Symbol, String
-                puts "moved"
-                destination[d_field] = source[s_field]
-              when Hash
-                puts "moved with transform"
-                destination[d_field] = proc_macro.call(*v.first)
-              when CopyTranslationAction
-                puts "copied"
-                destination[d_field] = source[d_field]
-              when DiscardTranslationAction
-                puts "discarded"
-                next
-              when Strategy
-                puts "substragey"
-                v.parent = self
-                Datatron::Translator.with_strategy(v).translate
-              end
-          end
-              
-
-          op_fields.collect do |field|
-            strat_process_lambda.call field
+            action.value = v
+           
+            # this is basically executed for it's side effects.
+            process_field(action) || next
           end
         end
 
@@ -108,8 +118,19 @@ module Datatron
           # we don't actually need to pass
           # s,d here, since they're available
           # as accessor source, destination
-          translate_item
-          destination.save
+          begin
+            translate_item
+            destination.save
+          rescue StandardError => e
+            if strategy.strategy_hash.has_key? :error
+              strategy.strategy_hash[:error].call(e)
+            else
+              debugger
+              1
+              puts "no error handler provided"
+              raise e
+            end
+          end
         end
       end
     end

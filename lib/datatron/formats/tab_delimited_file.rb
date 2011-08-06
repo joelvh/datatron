@@ -72,7 +72,7 @@ module Datatron
                   self.data = Enumerator.new do |y|
                     self.each do |row|
                       r = block.call(row, *args)
-                      y << r if r
+                      y << row if r
                     end
                   end
                 end

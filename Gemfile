@@ -4,3 +4,4 @@ source "http://rubygems.org"
 gemspec
 
 gem 'order_tree', :path => '/Users/stephenprater/Sites/order_tree'
+gem 'ruby-debug-ide'

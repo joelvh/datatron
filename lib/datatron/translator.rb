@@ -43,8 +43,6 @@ module Datatron
             return nil
           when Strategy
             action.value.parent = self
-            debugger
-            1
             Datatron::Translator.with_strategy(action.value).translate
         end
         true
@@ -125,8 +123,6 @@ module Datatron
             if strategy.strategy_hash.has_key? :error
               strategy.strategy_hash[:error].call(e)
             else
-              debugger
-              1
               puts "no error handler provided"
               raise e
             end
@@ -165,7 +161,10 @@ module Datatron
             
             if strategy.router
               args, dest_proc = strategy.router
-              @destination.define_singleton_method :save, *args, &dest_proc
+              @destination.define_singleton_method :save do |*args|
+                args = [@destination].concat args[0..&dest_proc.arity-1]
+                strategy.instance_exec *args, &dest_proc
+              end
             end
           
             @source = strategy.from_source.next

@@ -10,15 +10,15 @@ module Datatron
             c.data_source = table.singularize.camelize.constantize 
             class << c
               def keys
-                self.superclass.column_names
+                self.data_source.column_names
               end
 
               def each
                 return enum_for :each unless block_given?
-                pt = c.data_class.arel_table
+                pt = self.data_source.arel_table
                 id = 0
                 loop do
-                  obj = c.data_class.find_by_sql(pt.project('*').where(pt[:id].gteq(id)).order(pt[:id].asc).to_sql).first
+                  obj = self.data_source.find_by_sql(pt.project('*').where(pt[:id].gteq(id)).order(pt[:id].asc).to_sql).first
                   obj ? yield(self.new(obj)) : break 
                   id = obj.id + 1 
                 end

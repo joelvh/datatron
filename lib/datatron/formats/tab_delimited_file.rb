@@ -61,12 +61,7 @@ module Datatron
                   yield self.new(obj)
                 end
               end
-
-              def rewind
-                fd.rewind
-                super
-              end
-
+              
               def _finder *args, &block
                 rewind do
                   self.data = Enumerator.new do |y|
@@ -79,15 +74,20 @@ module Datatron
               end
               private :_finder
 
+              def rewind
+                fd.rewind
+                super
+              end
+
               def find all = :first, &block
-                return enum_for(:_find) unless block_given?
+                raise ArgumentError, 'block required' unless block_given?
                 if all == :first
-                  memo = _finder(block).next
-                  rewind
+                  memo = _finder(&block)
+                  return memo
                 else
-                  memo = _finder(block).to_a
+                  memo = _finder(&block).to_a
+                  return memo.empty? ? nil : memo
                 end
-                return memo.empty? ? nil : memo
               end
             end
           end

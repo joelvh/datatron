@@ -41,6 +41,8 @@ module Datatron
             destination[action.destination_field] = source[action.destination_field]
           when DiscardTranslationAction
             return nil
+          when Proc
+            action.value.call(source[action.source_field])
           when Strategy
             action.value.parent = self
             Datatron::Translator.with_strategy(action.value).translate
@@ -57,15 +59,17 @@ module Datatron
         # Or "get it from the column of the samn name"
         # Or "get it from X but run it through this function
         # firstkkj
-        # Or "Just tell the record item you'd like it populated."
+        # Or "Just tell the record item you'd likke it populated."
         # or "Different step - ask for it to be done."
-        #
-        
+       
+        #destination keys not explicity assigned to
         strategy.strategy_hash.each_pair do |p,v|
+          
           type = p.shift
           next if p.empty?
           
           op_field = p.shift
+          next if op_field == :error
           
           if op_field.is_a? Regexp
             model = type == :from ? :from_source : :to_source
@@ -97,7 +101,16 @@ module Datatron
             action.value = v
            
             # this is basically executed for it's side effects.
-            process_field(action) || next
+            begin
+              process_field(action) || next
+            rescue StandardError => e
+              error_loc = strategy.strategy_hash[type][op_field]
+              if error_loc.respond_to? :has_key? and error_loc.has_key? :error
+                destination[action.destination_field] = error_loc[:error].call(e)
+              else
+                raise e
+              end
+            end
           end
         end
 
@@ -108,7 +121,7 @@ module Datatron
         if destination.respond_to? :valid? 
           raise Datatron::RecordInvalid, dest unless dest.valid?
         end
-        destination.save
+        strategy.save
       end
 
       def translate
@@ -118,10 +131,10 @@ module Datatron
           # as accessor source, destination
           begin
             translate_item
-            destination.save
+            strategy.save
           rescue StandardError => e
             if strategy.strategy_hash.has_key? :error
-              strategy.strategy_hash[:error].call(e)
+              puts strategy.strategy_hash[:error].call(e)
             else
               puts "no error handler provided"
               raise e
@@ -131,44 +144,44 @@ module Datatron
       end
     end
 
-    cattr_accessor :strategy
-   
     class << self
       
       def with_strategy strat
-        klass = Class.new(self) do
+        klass = Class.new(self) do |this|
+          
+          class << self
+            attr_accessor :strategy
+          end
 
           include StrategyInterface
-          self.strategy = strat.clone
-          self.strategy.extend DataInterface
-               
+          this.strategy = strat.clone
+          this.strategy.extend DataInterface
+          
+          attr_reader :source, :destination, :strategy
+
           def initialize
             @strategy = self.class.strategy
             @strategy.translator = self
+            
+            destination.class.keys.reject do |dk|
+              true if dk == "id"
+              strategy.strategy_hash.find do |v|
+                p = v.path
+                break true if p[0] == :to and p[1].to_s == dk.to_s
+                break true if v.is_a? Hash and v.keys.first.to_s == dk
+                break true if v.to_s == dk
+              end
+            end.collect { |k| [:to, k]}
+
+            #default destinations
+
+        end
+
           end
 
-          attr_reader :source, :destination
-
           def items 
-            strategy.from_source.rewind
-            
-            if strategy.finder
-              args, finder_proc = strategy.finder
-              strategy.from_source.send :_finder, *args, &finder_proc
-            end
-
-            @destination = strategy.to_source.new 
-            
-            if strategy.router
-              args, dest_proc = strategy.router
-              @destination.define_singleton_method :save do |*args|
-                args = [@destination].concat args[0..&dest_proc.arity-1]
-                strategy.instance_exec *args, &dest_proc
-              end
-            end
-          
-            @source = strategy.from_source.next
-              
+            @destination = self.strategy.new #that's actually an instance method
+            @source = self.strategy.next 
             return @source, @destination
           end
 

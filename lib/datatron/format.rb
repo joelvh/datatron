@@ -34,6 +34,8 @@ module Datatron
     end
 
     module InstanceMethods
+      attr_reader :obj
+
       def __getobj__
         @obj ||= self.class.data_source.new
       end

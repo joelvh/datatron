@@ -39,15 +39,14 @@ module Datatron
             destination[action.destination_field] = action.proc_macro.call(*action.value.first)
           when CopyTranslationAction
             destination[action.destination_field] = source[action.destination_field]
-          when DiscardTranslationAction
-            return nil
+          when DiscardTranslationAction, NilClass
+            false
           when Proc
-            action.value.call(source[action.source_field])
+            strategy.instance_exec source[action.source_field], &action.value
           when Strategy
             action.value.parent = self
             Datatron::Translator.with_strategy(action.value).translate
         end
-        true
       end
       private :process_field
 
@@ -63,17 +62,17 @@ module Datatron
         # or "Different step - ask for it to be done."
        
         #destination keys not explicity assigned to
-        strategy.strategy_hash.each_pair do |p,v|
+        translation_keys = (strategy.strategy_hash.each_path.to_a + implicit_keys).reject { |p| [[:error], [:to], [:from]].include? p }
+        id_set = false 
+        translation_keys.each do |p|
+          v = strategy.strategy_hash[*p]
           
-          type = p.shift
-          next if p.empty?
-          
-          op_field = p.shift
+          type, op_field = *p 
           next if op_field == :error
           
           if op_field.is_a? Regexp
             model = type == :from ? :from_source : :to_source
-            op_fields = strategy.send(model).keys.select { |v| op_field.match v}
+            op_fields = strategy.send(model).keys.select { |vo| op_field.match vo}
           elsif op_field.is_a? Array
             op_fields.concat op_field
           else
@@ -102,11 +101,11 @@ module Datatron
            
             # this is basically executed for it's side effects.
             begin
-              process_field(action) || next
+              process_field(action)
             rescue StandardError => e
               error_loc = strategy.strategy_hash[type][op_field]
               if error_loc.respond_to? :has_key? and error_loc.has_key? :error
-                destination[action.destination_field] = error_loc[:error].call(e)
+                destination[action.destination_field] = strategy.instance_exec e, &error_loc[:error]
               else
                 raise e
               end
@@ -119,22 +118,33 @@ module Datatron
       def translate_item!
         translate_item
         if destination.respond_to? :valid? 
-          raise Datatron::RecordInvalid, dest unless dest.valid?
+          raise Datatron::RecordInvalid, destination unless destination.valid?
         end
-        strategy.save
+      end
+      
+      # only the top one should be wrapped in a transaction
+      def translate! validate = nil 
+        if strategy.to_source.respond_to? :transaction 
+          strategy.to_source.transaction do
+            translate validate
+          end
+        else
+          translate validate
+        end
       end
 
-      def translate
+      def translate validate = nil
+        @translate_method = validate == :validate ? :translate_item! : :translate_item
         self.each do |s,d|
           # we don't actually need to pass
           # s,d here, since they're available
           # as accessor source, destination
           begin
-            translate_item
+            self.send @translate_method
             strategy.save
           rescue StandardError => e
             if strategy.strategy_hash.has_key? :error
-              puts strategy.strategy_hash[:error].call(e)
+              strategy.instance_exec e, &strategy.strategy_hash[:error]
             else
               puts "no error handler provided"
               raise e
@@ -147,6 +157,9 @@ module Datatron
     class << self
       
       def with_strategy strat
+        klass = (strat.base_name.singularize.camelize + "Translator").constantize rescue false
+        return klass.new if klass
+
         klass = Class.new(self) do |this|
           
           class << self
@@ -157,26 +170,20 @@ module Datatron
           this.strategy = strat.clone
           this.strategy.extend DataInterface
           
-          attr_reader :source, :destination, :strategy
+          attr_reader :source, :destination, :strategy, :implicit_keys
 
           def initialize
             @strategy = self.class.strategy
             @strategy.translator = self
-            
-            destination.class.keys.reject do |dk|
-              true if dk == "id"
-              strategy.strategy_hash.find do |v|
+          
+            @implicit_keys = @strategy.to_source.keys.reject do |dk|
+              @strategy.strategy_hash.find do |v|
                 p = v.path
-                break true if p[0] == :to and p[1].to_s == dk.to_s
+                break true if [:to, :from].include? p[0] and p[1].to_s == dk.to_s
                 break true if v.is_a? Hash and v.keys.first.to_s == dk
                 break true if v.to_s == dk
               end
-            end.collect { |k| [:to, k]}
-
-            #default destinations
-
-        end
-
+            end.collect { |k| [:to, k.intern] }
           end
 
           def items 
@@ -193,7 +200,7 @@ module Datatron
           end
         end
         # this will issue a warning if the class already exsists.
-        const_set (klass.strategy.base_name.singularize.camelize + "Translator").intern, klass
+        const_set((klass.strategy.base_name.singularize.camelize + "Translator").intern, klass)
         klass.new
       end
     end

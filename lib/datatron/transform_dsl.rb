@@ -19,21 +19,6 @@ module Datatron
         end
       end
 
-      def transition_valid? from, to
-        return true if from.nil?
-
-        unless @transition_table
-          @transition_table = {  
-            :ready => [:to, :from, :ready, :error],
-            :to => [:from, :through, :using, :error, :ready],
-            :from => [:to, :through, :error, :ready]
-          }
-          @transition_table.default = [:ready]
-        end
-          
-        @transition_table[from].include?(to) ? true : false
-      end
-
       def const_missing const
         Datatron::Formats.const_get const
       end
@@ -51,6 +36,21 @@ module Datatron
 
       def base_name
         self.to_s.split('::').last.underscore.pluralize
+      end
+
+      def transition_valid? from, to
+        return true if from.nil?
+
+        unless @transition_table
+          @transition_table = {  
+            :ready => [:to, :from, :ready, :error],
+            :to => [:from, :through, :using, :error, :ready],
+            :from => [:to, :through, :error, :ready]
+          }
+          @transition_table.default = [:ready]
+        end
+          
+        @transition_table[from].include?(to) ? true : false
       end
     end
 
@@ -132,16 +132,17 @@ module Datatron
         define_method op do |field, &block|
           op_field = @current_field
           self.current_status = op, field
-          if @strategy_hash[inverse_op,field]
+          if @strategy_hash.has_path?(inverse_op,field)
             unless @strategy_hash[inverse_op,field] == AwaitingTranslationAction.instance
               raise InvalidTransition, "#{inverse_op} action for #{field} is already defined"
             end
-          elsif @strategy_hash[inverse_op, op_field]
-            unless block.nil?
-              @strategy_hash.store(inverse_op, op_field, { field => block })
-            else
+          elsif @strategy_hash.has_path?(inverse_op, op_field)
+            if block.nil?
               @strategy_hash[inverse_op,op_field] = field.to_s
+            else
+              @strategy_hash.store(inverse_op, op_field, { field => block })
             end
+            self.current_status = :ready, nil #all set up and ready for the next one
           else 
             @strategy_hash[op, field] = block || AwaitingTranslationAction.instance 
           end
@@ -203,9 +204,7 @@ module Datatron
         
         block = @from_source.method method if method
         
-        @strategy_hash[:to][@current_field] = {
-          @current_field => block
-        }
+        @strategy_hash.store(:to,@current_field, { @current_field => block })
       end
 
       def otherwise method
@@ -223,10 +222,23 @@ module Datatron
         self.current_status = :ready, nil
       end
 
+      def copy field = nil
+        if field
+          @strategy_hash[:from][field] = CopyTranslationAction.instance
+        elsif @strategy_hash.has_path?(:from,@current_field)
+          @strategy_hash[:from][@current_field] = CopyTranslationAction.instance
+        else
+          raise InvalidTransition, "copy must come after a 'from' action on a field"
+        end
+      ensure
+        self.current_status = :ready, nil
+      end
+      alias :same :copy
+
       def delete field = nil
         if field
           @strategy_hash[:from][field] = DiscardTranslationAction.instance
-        elsif @strategy_hash[:from].has_key? @current_field
+        elsif @strategy_hash.has_path?(:from, @current_field)
            @strategy_hash[:from][@current_field] = DiscardTranslationAction.instance
         else
           raise InvalidTransition, "delete must come after a 'from' action on a field"

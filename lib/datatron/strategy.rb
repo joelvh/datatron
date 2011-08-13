@@ -4,13 +4,7 @@ module Datatron
 
     class << self
       def === obj
-        if obj.is_a? self
-          return true
-        elsif obj < self
-          return true
-        else
-          return false
-        end
+        obj.kind_of? self
       end
     end
     

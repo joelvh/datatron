@@ -3,7 +3,6 @@ module Datatron
     include Translation
     Action = Struct.new(:value, :destination_field, :source_field, :proc_macro)
     
-    
     #this module is mixed into the strategy instance
     #at runtime to provide access to the current source
     #and current destination items via the #source
@@ -23,22 +22,27 @@ module Datatron
       
       def_delegator :@translator, :source
       def_delegator :@translator, :destination
-    end
 
+    end
 
     # This is mixed into the translator to provide
     # and interface to the strategy object
     module StrategyInterface
       include Translation
 
-      def process_field action 
+      def rewind
+        strategy.to_source.rewind
+        strategy.from_source.rewind
+      end
+
+      def process_field! action 
         case action.value 
           when Symbol, String
             destination[action.destination_field] = source[action.source_field]
           when Hash
-            destination[action.destination_field] = action.proc_macro.call(*action.value.first)
+            strategy.instance_exec *action.value.first, &action.proc_macro
           when CopyTranslationAction
-            destination[action.destination_field] = source[action.destination_field]
+            destination[action.source_field] = source[action.source_field]
           when DiscardTranslationAction, NilClass
             false
           when Proc
@@ -48,19 +52,9 @@ module Datatron
             Datatron::Translator.with_strategy(action.value).translate
         end
       end
-      private :process_field
+      private :process_field!
 
       def translate_item
-        #the basic principle here is that the Translator
-        # asks the "Strategy" what to do with each key?
-        # where do I get the information for this attribute?
-        # The transform ansers "get it from here"
-        # Or "get it from the column of the samn name"
-        # Or "get it from X but run it through this function
-        # firstkkj
-        # Or "Just tell the record item you'd likke it populated."
-        # or "Different step - ask for it to be done."
-       
         #destination keys not explicity assigned to
         translation_keys = (strategy.strategy_hash.each_path.to_a + implicit_keys).reject { |p| [[:error], [:to], [:from]].include? p }
         id_set = false 
@@ -83,16 +77,18 @@ module Datatron
           op_fields.collect do |field|
 
             action = Action.new
+
+            o_field = ([CopyTranslationAction.instance, DiscardTranslationAction.instance].include? v) ? field : v
             
             if type == :from
-              action.destination_field = v.to_s
+              action.destination_field = o_field.to_s
               action.source_field = field.to_s
               action.proc_macro = lambda do |proc_field, prok|
                 destination[proc_field.to_s] = prok.call(source[action.source_field])
               end
             elsif type == :to
               action.destination_field = field.to_s
-              action.source_field = v.to_s
+              action.source_field = o_field.to_s
               action.proc_macro = lambda do |proc_field, prok|
                 destination[action.source_field] = prok.call(proc_field.to_s)
               end
@@ -101,7 +97,7 @@ module Datatron
            
             # this is basically executed for it's side effects.
             begin
-              process_field(action)
+              process_field!(action)
             rescue StandardError => e
               error_loc = strategy.strategy_hash[type][op_field]
               if error_loc.respond_to? :has_key? and error_loc.has_key? :error
@@ -112,43 +108,50 @@ module Datatron
             end
           end
         end
+      end
 
+      def update_progress was_success, error = nil
+        self.changed
+        @progress ||= {
+          :successful => 0,
+          :seen => 0,
+          :error_count => 0,
+          :source_percent => 0.0,
+          :dest_percent => 0.0,
+          :last_error => ''
+        }
+          
+        @progress[:successful] += 1 if was_success 
+        @progress[:seen] += 1
+        @progress[:dest_percent] = strategy.to_source.progress
+        @progress[:source_percent] = strategy.from_source.progress
+        if error
+          @progress[:last_error] = error
+          @progress[:error_count] += 1
+        end
+
+        self.notify_observers(self)
       end
     
-      def translate_item!
-        translate_item
-        if destination.respond_to? :valid? 
-          raise Datatron::RecordInvalid, destination unless destination.valid?
-        end
-      end
-      
-      # only the top one should be wrapped in a transaction
-      def translate! validate = nil 
-        if strategy.to_source.respond_to? :transaction 
-          strategy.to_source.transaction do
-            translate validate
-          end
-        else
-          translate validate
-        end
-      end
-
       def translate validate = nil
-        @translate_method = validate == :validate ? :translate_item! : :translate_item
-        self.each do |s,d|
+        self.each.with_index do |(s,d),i|
           # we don't actually need to pass
           # s,d here, since they're available
           # as accessor source, destination
           begin
-            self.send @translate_method
+            translate_item
+            if validate and destination.respond_to? :valid?
+              raise Datatron::RecordInvalid, destination unless destination.valid?
+            end
             strategy.save
+            update_progress(true)
           rescue StandardError => e
             if strategy.strategy_hash.has_key? :error
               strategy.instance_exec e, &strategy.strategy_hash[:error]
             else
-              puts "no error handler provided"
               raise e
             end
+            update_progress(false, e)
           end
         end
       end
@@ -156,11 +159,14 @@ module Datatron
 
     class << self
       
-      def with_strategy strat
-        klass = (strat.base_name.singularize.camelize + "Translator").constantize rescue false
-        return klass.new if klass
-
+      def with_strategy strat, force_new = false
+        klass_name = strat.base_name.singularize.camelize + "Translator"
+        if const_defined? klass_name and not force_new
+          return const_get(klass_name).new
+        end
+        
         klass = Class.new(self) do |this|
+          include Observable
           
           class << self
             attr_accessor :strategy
@@ -171,6 +177,7 @@ module Datatron
           this.strategy.extend DataInterface
           
           attr_reader :source, :destination, :strategy, :implicit_keys
+          attr_reader :progress
 
           def initialize
             @strategy = self.class.strategy
@@ -187,8 +194,20 @@ module Datatron
           end
 
           def items 
-            @destination = self.strategy.new #that's actually an instance method
-            @source = self.strategy.next 
+            begin
+              @source = self.strategy.next 
+              @destination = self.strategy.new #that's actually an instance method
+            rescue StopIteration => e
+              raise e
+            rescue StandardError => e
+              if strategy.strategy_hash.has_key? :error
+                strategy.instance_exec e, &strategy.strategy_hash[:error]
+              else
+                raise e
+              end
+              update_progress(false,e)
+              retry
+            end
             return @source, @destination
           end
 

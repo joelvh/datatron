@@ -4,4 +4,5 @@ source "http://rubygems.org"
 gemspec
 
 gem 'order_tree', :path => '/Users/stephenprater/Sites/order_tree'
+gem 'term_helper', :path => '/Users/stephenprater/Sites/term_helper'
 gem 'ruby-debug-ide19'

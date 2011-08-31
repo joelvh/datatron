@@ -4,7 +4,7 @@ module Datatron
       include Singleton
       [:source, :destination].each do |op|
         define_method(op) do |field|
-          raise DatatronError, "Strategy is not part of a translator! #{op} is not available!" 
+          raise DatatronError, "Strategy is not part of a translator so #{op} is not available" 
         end
       end
     end

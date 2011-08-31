@@ -3,15 +3,15 @@ module Datatron
     extend ActiveSupport::Concern
 
     module ClassMethods
-      [:from, :keys, :each].map do |k|
+      [:from, :keys, :each, :fields, :find, :progress].each do |k|
         define_method k do
-          raise NotImplementedError,"Subclasses of Datatron::Format should implement #{k}"
+          raise Datatron::InvalidFormat, "Subclasses should define method #{k}"
         end
       end
-          
+
       def next
         @data ||= self.each
-        @data.next
+        @current = @data.next
       end
 
       def rewind
@@ -19,6 +19,7 @@ module Datatron
         yield if block_given?
       end
 
+      attr_reader :current
       attr_accessor :data_source
       attr_accessor :data
       attr_accessor :base_name

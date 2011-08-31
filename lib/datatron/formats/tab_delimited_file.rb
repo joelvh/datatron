@@ -28,7 +28,9 @@ module Datatron
     class TabDelimitedFile < Datatron::Format
       class << self
         def from filename, seperator = "\n"
-          filename = "data/#{filename}.txt"
+          filename << ".txt" unless filename =~ /.\.[a-z]+$/
+          filename = Datatron.path ? "#{Datatron.path}/#{filename}" : "#{filename}"
+
           raise DataSourceNotFound, "No such file or directory #{filename}" unless File.exists? filename
 
           class_name = filename.split(/\/|\./)[-2] #last elements without the extension
@@ -46,16 +48,25 @@ module Datatron
             class << c
               attr_accessor :seperator
 
+              def fields line
+                line.chomp.split("\t",-1)
+              end
+
+              def progress
+                @size ||= fd.size 
+                fd.pos.fdiv(@size) rescue (0.0 / 0.0) #Nan
+              end
+
               def keys
                 return @keys if @keys
                 fd.rewind if fd.lineno != 0
-                @keys = fd.readline(self.seperator).chomp.split("\t",-1)
+                @keys = fields(fd.readline(self.seperator))
               end
 
               def each
                 return enum_for(:each) unless block_given?
-                fd.readlines(self.seperator).each do |l|
-                  vals = l.chomp.split("\t",-1)
+                fd.lines(self.seperator) do |l|
+                  vals = fields(l) 
                   next if vals == keys
                   obj = HashWithIndifferentAccess[self.keys.zip(vals)]
                   yield self.new(obj)

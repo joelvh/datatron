@@ -30,7 +30,7 @@ module Datatron
     def save
       if @router
         args, router_proc = @router
-        args = [self.destination].concat args[0..router_proc.arity - 1]
+        args = [self.destination].concat args[0 .. (router_proc.arity - 1)]
         self.instance_exec *args, &router_proc
       else
         self.destination.save
@@ -38,7 +38,13 @@ module Datatron
     end
 
     def new
-      self.to_source.new
+      if @appender
+        args, appender_proc = @appender
+        args = [self.destination].concat args[0 .. (appender_proc.arity - 1)]
+        self.instance_exec *args, &appender_proc
+      else
+        self.to_source.new
+      end
     end
 
     private
@@ -56,7 +62,7 @@ module Datatron
       this = self
       args, router_proc = @router
       self.destination.define_singleton_method :save do
-        args = [this.destination].concat args[0 .. router_proc.arity - 1]
+        args = [this.destination].concat args[0 .. (router_proc.arity - 1)]
         this.instance_exec *args, &router_proc
       end
     end

@@ -1,17 +1,21 @@
 require 'active_support/core_ext'
 
-#require 'datatron/converter'
-#require 'datatron/translator'
-#require 'datatron/transform_methods'
-#require 'datatron/transform'
 
 require 'weakref'
 require 'singleton'
 require 'set'
 require 'forwardable'
+require 'observer'
 
 #gem dependency
 require 'order_tree'
+
+#other files i need
+require 'datatron/translation'
+require 'datatron/transform_dsl'
+require 'datatron/strategy'
+require 'datatron/translator'
+require 'datatron/converter'
 
 module Datatron
   if defined? Rails
@@ -22,11 +26,6 @@ module Datatron
     end
   end
   
-  autoload :Strategy,      'datatron/strategy'
-  autoload :TransformDSL,  'datatron/transform_dsl'
-  autoload :Translation,   'datatron/translation'
-  autoload :Translator,    'datatron/translator'
-  autoload :Converter,     'datatron/converter'
   autoload :Format,        'datatron/format'
 
   module LiveConstants 
@@ -43,6 +42,7 @@ module Datatron
   end
 
   class DatatronError < StandardError; end
+  class InvalidFormat < DatatronError; end
   class DataSourceNotFound < DatatronError; end
   class RecordInvalid < DatatronError; end 
 
@@ -71,25 +71,15 @@ module Datatron
   end
   module_function :strategies
 
+  class << self
+    attr_accessor :path
+    attr_accessor :verbose_log
+  end
+
+  @path = 'data'
+  @verbose_log = false
+
   class InvalidTransition < DatatronError; end
   class TranslationFormatError < DatatronError; end
   class TranslationKeyError < DatatronError; end 
 end
-
-# I concur.
-# http://redmine.ruby-lang.org/issues/4553
-# I kinda wish this could be a refinement
-class Set
-  def pick
-    @hash.first.first
-  end
-  # Picks an arbitrary element from the set and deletes it. Use +pick+ to
-  # pick without deletion.
-  def pop
-    key = pick
-    @hash.delete(key)
-    key
-  end
-end
-
-

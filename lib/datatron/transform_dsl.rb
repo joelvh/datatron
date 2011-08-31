@@ -126,29 +126,40 @@ module Datatron
         @current_field
       end
 
+      def check_field op, field, value, block
+        if @strategy_hash.has_path?(op,field)
+          action = @strategy_hash[op,field]
+
+          # if the action name already exists, and it's set to something,
+          # that's an error
+          unless action == AwaitingTranslationAction.instance 
+            raise InvalidTransition, "[#{op}, #{field}] action for #{field} is already defined"
+          end
+
+          # we are awaiting our tranlsation action
+          if block.nil?
+            @strategy_hash[op,field] = value.to_s
+          else
+            @strategy_hash.store(op,field, { value => block })
+          end
+          self.current_status = :ready, nil #all set up and ready for the next one
+          return true
+        end
+        return false
+      end
+      private :check_field
+
       [:to, :from].map do |op|
         inverse_op = op == :to ? :from : :to
 
         define_method op do |field, &block|
-          op_field = @current_field
+          last_field = @current_field
           self.current_status = op, field
-          if @strategy_hash.has_path?(inverse_op,field)
-            unless @strategy_hash[inverse_op,field] == AwaitingTranslationAction.instance
-              raise InvalidTransition, "#{inverse_op} action for #{field} is already defined"
-            end
-          elsif @strategy_hash.has_path?(inverse_op, op_field)
-            if block.nil?
-              @strategy_hash[inverse_op,op_field] = field.to_s
-            else
-              @strategy_hash.store(inverse_op, op_field, { field => block })
-            end
-            self.current_status = :ready, nil #all set up and ready for the next one
-          else 
-            @strategy_hash[op, field] = block || AwaitingTranslationAction.instance 
+          unless (check_field(op,field, field, block) or check_field(inverse_op, last_field, field, block))
+            @strategy_hash[op,field] = block || AwaitingTranslationAction.instance 
           end
-          
           #don't put "done" after to / from with blocks
-          self.current_status = :ready, nil if !block.nil?
+          self.current_status = :ready, nil if not block.nil?
         end
 
         define_method "#{op}_model".intern do |model = nil|
@@ -222,38 +233,52 @@ module Datatron
         self.current_status = :ready, nil
       end
 
-      def copy field = nil
-        if field
-          @strategy_hash[:from][field] = CopyTranslationAction.instance
-        elsif @strategy_hash.has_path?(:from,@current_field)
+      def copy *fields
+        if not fields.empty?
+          fields.each do |field|
+            @strategy_hash[:from][field] = CopyTranslationAction.instance
+          end
+        elsif @strategy_hash.has_path?(:from, @current_field)
           @strategy_hash[:from][@current_field] = CopyTranslationAction.instance
         else
-          raise InvalidTransition, "copy must come after a 'from' action on a field"
+          raise InvalidTransition, "copy must come after a 'from' action on a field or with a list of field names"
         end
       ensure
         self.current_status = :ready, nil
       end
       alias :same :copy
 
-      def delete field = nil
-        if field
-          @strategy_hash[:from][field] = DiscardTranslationAction.instance
+      def delete *fields
+        if not fields.empty?
+          fields.each do |field|
+            @strategy_hash[:from][field] = DiscardTranslationAction.instance
+          end
         elsif @strategy_hash.has_path?(:from, @current_field)
            @strategy_hash[:from][@current_field] = DiscardTranslationAction.instance
         else
-          raise InvalidTransition, "delete must come after a 'from' action on a field"
+          raise InvalidTransition, "delete must come after a 'from' action on a field or with a list of field names"
         end
       ensure
         self.current_status = :ready, nil
       end
       alias :ignore :delete
 
+      # find the source you want to use
+      # overrides "source.new"
       def find *args, &block
         @finder = [args, block]
       end
 
+      # how to save to a specific destination
+      # overrides "destination.save"
       def route *args, &block
         @router = [args, block]
+      end
+
+      # how to get a deestination
+      # overrides "destination.new"
+      def append *args, &block
+        @appender = [args, block]
       end
     end
   end

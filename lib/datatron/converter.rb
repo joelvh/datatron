@@ -18,6 +18,15 @@ module Datatron
       requested_conversions << conv
     end
 
+    def shift conv
+      raise DatatronError, "Need Strategy subclass" unless conv.kind_of? Datatron::Strategy
+      requested_conversions.shift conv
+    end
+
+    def clear
+      requested_conversions.clear
+    end
+
     def >> 
       requested_conversions.pop
     end
@@ -25,31 +34,44 @@ module Datatron
     def build_cache
       super
 
+      macro :clear_three do
+        output do |str|
+          3.times do
+            str << c.clear_line
+            c.down
+          end
+          c.up * 4 
+        end
+      end
+
       macro :progress_display do |strategy|
         output do |str|
+          str << c.clear_three
           str << color(:yellow) do |str|
-            str << strategy.strategy.base_name
+            str << strategy.strategy.name
+            str << c.right * 2
           end
-          str << strategy.progress[:successful] + 'out of' +  strategy.progress[:seen]
+          str << strategy.progress[:successful] + ' out of ' +  strategy.progress[:seen]
+          str << c.right * 2
           str << color(:red) do |str|
-            str << strategy.progress[:error_count] + "Errors -- last error was " + strategy.progress[:last_error]
+            str << strategy.progress[:error_count] + " Errors -- last error was " + strategy.progress[:last_error]
           end
           str << c.down
-          str << "Source %"
-          str << widget.progress_line(strategy.progress[:source_percent])
+          str << color(:gray) { |str| str << "Source %" }
+          str << self.progress_line(strategy.progress[:source_percent])
           str << c.down
-          str << "Dest   %"
-          str << widget.progress_line(strategy.progress[:dest_percent])
+          str << color(:gray) { |str| str << "Dest   %" }
+          str << self.progress_line(strategy.progress[:dest_percent])
           str << c.up * 2 
         end
       end
 
       widget :progress_line do |percentage|
         total_cols = size[:cols].to_i * 0.8
-        cols = percentage.nan? ? 0 : (percentage * (total_cols - 16)).to_i
+        cols = percentage.nan? ? 0 : (percentage * (total_cols)).to_i
 
         output do |str|
-          str << (percentage.nan? ? "  Unknown" : "%8d%%" % (percentage * 100))
+          str << (percentage.nan? ? "  Unknown " : "%8d%% " % (percentage * 100))
           str << symbols do |str|
             str << color(:white) do |str| 
               str << "x"
@@ -65,22 +87,26 @@ module Datatron
           str << c.column(1)
         end
       end
+
+      cache
     end
 
     def update translator
-      build_cache 
+      build_cache unless cache
       output STDOUT do |str|
         str << c.progress_display(translator)
       end
     end
 
     def convert 
-      while requested_conversions.size > 0
-        translator = Translator.with_strategy(requested_conversions.shift)
-        translator.add_observer(self)
-        translator.rewind
-        translator.translate :validate
-        output(STDOUT) { |str| str << c.down * 2 }
+      catch :stop_conversion do
+        while requested_conversions.size > 0
+          translator = Translator.with_strategy(requested_conversions.shift)
+          translator.add_observer(self)
+          translator.rewind
+          translator.translate :validate
+          output(STDOUT) { |str| str << c.down * 4 }
+        end
       end
     end
   end

@@ -34,6 +34,16 @@ module Datatron
         strats
       end
 
+      [:to, :from].product([:model, :source]).map { |i| i.join('_')}.each do |meth|
+        define_method meth.intern do |source = nil|
+          if source
+            instance_variable_set "@#{meth}", source
+          else
+            instance_variable_get "@#{meth}"
+          end
+        end
+      end
+        
       def base_name
         self.to_s.split('::').last.underscore.pluralize
       end
@@ -61,33 +71,31 @@ module Datatron
 
       attr_accessor :finder
       attr_accessor :router
-      attr_accessor :name
+      attr_writer :name
 
       def initialize strategy, *args, &block
         @name = strategy
         options = (args.pop if args.last.is_a? Hash) || {}
         @current = :ready
+
+        source_models = [:to, :from].product([:model,:source]).map { |i| i.join("_") }.map(&:intern)
+        options.reverse_merge!(source_models.each.with_object({}) do |meth,memo|
+          memo[meth] = self.class.__send__(meth)
+        end)
+
+        options.each { |k,v| __send__ k, v } 
+        
         instance_exec args.slice(0,block.arity), &block
         
-        options.reverse_merge!({:to => @to_source, 
-                                :keys => :keys,
-                                :from => @from_source,
-                                :from_keys => :keys})
-
-
-        [:to, :from].each do |op|
-          model, source = ["model","source"].collect { |s| "#{op}_#{s}".intern }
-          unless(options[op] == __send__(source)) then
-            __send__ source, options[op]
-            unless __send__ source
-              raise ArgumentError, "Couldn't find #{model} subclass for #{self.class}"
-            end
-          end
-        end
+        self
       end
 
       def base_name
         self.class.base_name
+      end
+
+      def name
+        [self.class.base_name,@name].join("_")
       end
 
       def modify *args, &block
@@ -170,7 +178,7 @@ module Datatron
               raise ::ArgumentError, "Datatron::Format class expected got #{model.class}" 
             end
             instance_variable_set "@#{op}_model", model
-            __send__ "#{op}_source".intern, self.base_name
+            __send__ "#{op}_source".intern, (self.class.send "#{op}_source" || self.base_name)
           else
             instance_variable_get "@#{op}_model"
           end

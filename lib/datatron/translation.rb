@@ -29,14 +29,14 @@ module Datatron
       
       class << self
         def substrategy parent, strat, *args, &block
-          #retrive the strategy if it doesn't exist, or create it
+          #retrive the strategy if it exists, or create it if it doesn't
           #using the supplied block
-          strategy_name = "for_#{parent.base_name}_#{parent.name}".intern
+          strategy_name = "#{strat.base_name}_for_#{parent.base_name}_#{parent.instance_variable_get :@name}".intern
           begin
             strat_instance = strat.send strategy_name
           rescue NoMethodError => e
             if e.name == strategy_name
-              strat.send "for_#{parent.base_name}_#{parent.name}".intern, *args, &block
+              strat.send "#{strat.base_name}_for_#{parent.base_name}_#{parent.instance_variable_get :@name}".intern, *args, &block
               retry
             else
               raise e

@@ -26,7 +26,7 @@ module Datatron
     end
   end
   
-  autoload :Format,        'datatron/format'
+  autoload :Format, 'datatron/format'
 
   module LiveConstants 
     extend ActiveSupport::Concern
@@ -45,6 +45,7 @@ module Datatron
   class InvalidFormat < DatatronError; end
   class DataSourceNotFound < DatatronError; end
   class RecordInvalid < DatatronError; end 
+  class StrategyError < DatatronError; end
 
   module Formats
     include LiveConstants 

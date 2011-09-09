@@ -57,6 +57,7 @@ module Datatron
       def translate_item
         #destination keys not explicity assigned to
         translation_keys = (strategy.strategy_hash.each_path.to_a + implicit_keys).reject { |p| [[:error], [:to], [:from]].include? p }
+        
         id_set = false 
         translation_keys.each do |p|
           v = strategy.strategy_hash[*p]
@@ -160,7 +161,7 @@ module Datatron
     class << self
       
       def with_strategy strat, force_new = false
-        klass_name = strat.base_name.singularize.camelize + "Translator"
+        klass_name = strat.name.to_s.singularize.camelize + "Translator"
         if const_defined? klass_name and not force_new
           return const_get(klass_name).new
         end
@@ -182,7 +183,12 @@ module Datatron
           def initialize
             @strategy = self.class.strategy
             @strategy.translator = self
-          
+            
+            if ((@strategy.strategy_hash.branches(:from).collect {|k,v| k }.map(&:to_s) & @strategy.from_source.keys).empty? and
+               (@strategy.strategy_hash.branches(:to).collect {|k,v| k }.map(&:to_s) & @strategy.to_source.keys).empty?) then
+               raise Datatron::StrategyError, "Could not find any common keys between strategy and model."
+            end
+ 
             @implicit_keys = @strategy.to_source.keys.reject do |dk|
               @strategy.strategy_hash.find do |v|
                 p = v.path
@@ -191,6 +197,7 @@ module Datatron
                 break true if v.to_s == dk
               end
             end.collect { |k| [:to, k.intern] }
+
           end
 
           def items 
@@ -219,7 +226,7 @@ module Datatron
           end
         end
         # this will issue a warning if the class already exsists.
-        const_set((klass.strategy.base_name.singularize.camelize + "Translator").intern, klass)
+        const_set((klass.strategy.name.to_s.singularize.camelize + "Translator").intern, klass)
         klass.new
       end
     end

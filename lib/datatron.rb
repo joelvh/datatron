@@ -1,6 +1,4 @@
-require 'active_support/core_ext'
-
-
+#stdlib requires
 require 'weakref'
 require 'singleton'
 require 'set'
@@ -9,6 +7,8 @@ require 'observer'
 
 #gem dependency
 require 'order_tree'
+require 'anaphoric_case'
+require 'active_support/core_ext'
 
 #other files i need
 require 'datatron/translation'

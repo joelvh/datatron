@@ -21,6 +21,7 @@ Gem::Specification.new do |s|
 
   s.add_dependency 'activesupport', '~> 3.0.7'
   s.add_dependency 'order_tree'
+  s.add_dependency 'anaphoric_case'
 
   s.add_development_dependency "rspec"
   s.add_development_dependency "simplecov"

@@ -2,6 +2,13 @@ module Datatron
   module TransformDSL
     extend ActiveSupport::Concern
 
+    class ::Object
+      include AnaphoricCase
+    end
+
+    module AnaphoricCase
+    end
+
     module ClassMethods
       def method_missing meth, *args, &block
         args.push({}) if args.empty?
@@ -76,14 +83,14 @@ module Datatron
       def initialize strategy, *args, &block
         @name = strategy
         options = (args.pop if args.last.is_a? Hash) || {}
-        @current = :ready
+        @cturrent = :ready
 
         source_models = [:to, :from].product([:model,:source]).map { |i| i.join("_") }.map(&:intern)
         options.reverse_merge!(source_models.each.with_object({}) do |meth,memo|
           memo[meth] = self.class.__send__(meth)
         end)
 
-        options.each { |k,v| __send__ k, v } 
+        options.delete_if { |k,v| not v }.each { |k,v| __send__ k, v } 
         
         instance_exec args.slice(0,block.arity), &block
         
@@ -178,7 +185,14 @@ module Datatron
               raise ::ArgumentError, "Datatron::Format class expected got #{model.class}" 
             end
             instance_variable_set "@#{op}_model", model
-            __send__ "#{op}_source".intern, (self.class.send "#{op}_source" || self.base_name)
+            
+            #set up the default source when the model is set
+            source_name = switch do 
+              on instance_variable_get( :"@#{op}_source")
+              on self.class.__send__(:"#{op}_source")
+              on self.base_name 
+            end
+            __send__ "#{op}_source".intern, source_name
           else
             instance_variable_get "@#{op}_model"
           end
@@ -189,7 +203,7 @@ module Datatron
             model = __send__ "#{op}_model".intern
             new_model = lambda { model.from(source) }
             source_class = model.subclasses.find(new_model) do |sc|
-              sc.base_name == source
+              sc.base_name.to_s == source.to_s
             end
             #and this is why we require activesupport
             begin

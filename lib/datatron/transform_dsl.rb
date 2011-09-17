@@ -2,13 +2,6 @@ module Datatron
   module TransformDSL
     extend ActiveSupport::Concern
 
-    class ::Object
-      include AnaphoricCase
-    end
-
-    module AnaphoricCase
-    end
-
     module ClassMethods
       def method_missing meth, *args, &block
         args.push({}) if args.empty?
@@ -19,7 +12,7 @@ module Datatron
           @strategies[meth].merge!({ :block => block, :args => args })
         elsif @strategies.has_key? meth
           block = @strategies[meth][:block]
-          args.insert(-2, @strategies[meth][args]).flatten
+          args.concat(@strategies[meth][:args])
           self.new(meth,*args,&block)
         else
           super
@@ -79,21 +72,22 @@ module Datatron
       attr_accessor :finder
       attr_accessor :router
       attr_writer :name
+      attr_reader :parent
 
       def initialize strategy, *args, &block
         @name = strategy
         options = (args.pop if args.last.is_a? Hash) || {}
-        @cturrent = :ready
-
-        source_models = [:to, :from].product([:model,:source]).map { |i| i.join("_") }.map(&:intern)
-        options.reverse_merge!(source_models.each.with_object({}) do |meth,memo|
-          memo[meth] = self.class.__send__(meth)
-        end)
-
-        options.delete_if { |k,v| not v }.each { |k,v| __send__ k, v } 
+        @current = :ready
         
         instance_exec args.slice(0,block.arity), &block
-        
+
+        # if the models are not set within the instance, then set them here
+        [:to,:from].product([:model]).map { |i| i.join("_") }.map(&:intern).each do |model|
+          if not instance_variable_get :"@#{model}"
+            send model, (send model)
+          end
+        end
+
         self
       end
 
@@ -177,41 +171,69 @@ module Datatron
           self.current_status = :ready, nil if not block.nil?
         end
 
+        #okay, because setting the model and the source is complicated.
+        #Basically, the model is the superclass of the source and details the 
+        #kind of file it is. (like activerecord, json, tabdelim) the source
+        #is the particular class like active record tables, json or tab
+        #delim files, etc, which contain instances of a Datatype.
+        #you can also think of the model as a class factory for sources.
+        #
+        # model Model
+        #    set_model
+        #    set source to something
+        #       get the model
+        #       is that valid type of modeL?
+        #       then set the source
+        #
+        # you may set these in any order, but the source will not be validated
+        # until you set the model
+
         define_method "#{op}_model".intern do |model = nil|
           if model 
             begin
               model < Datatron::Format
             rescue ::ArgumentError
-              raise ::ArgumentError, "Datatron::Format class expected got #{model.class}" 
+              raise ::ArgumentError, "Datatron::Format class expected got #{model.class} - #{model}" 
             end
             instance_variable_set "@#{op}_model", model
             
             #set up the default source when the model is set
+            #when the model type is set up for our instance, set
+            #up the source as well
             source_name = switch do 
               on instance_variable_get( :"@#{op}_source")
               on self.class.__send__(:"#{op}_source")
               on self.base_name 
             end
             __send__ "#{op}_source".intern, source_name
+
           else
-            instance_variable_get "@#{op}_model"
+            # retrieve the model type
+            model_name = switch do
+              on instance_variable_get :"@#{op}_model"
+              on self.class.__send__ :"#{op}_model"
+              on { raise Datatron::DatatronError::InvalidFormat, "couldn't find a format model for #{self.base_name}" } 
+            end
           end
         end
 
-        define_method "#{op}_source".intern do |source = nil|
+        define_method "#{op}_source".intern do |source = nil, klass = nil|
           if source
-            model = __send__ "#{op}_model".intern
-            new_model = lambda { model.from(source) }
-            source_class = model.subclasses.find(new_model) do |sc|
-              sc.base_name.to_s == source.to_s
+            unless source.is_a? Class
+              model = __send__ "#{op}_model".intern
+              new_source = lambda { model.from(source, self.name) }
+              source = model.subclasses.find(new_source) do |sc|
+                sc.base_name.to_s == self.name 
+              end
             end
-            #and this is why we require activesupport
+            
             begin
-              source_class < Datatron::Format
+              source < Datatron::Format
             rescue ::ArgumentError
               raise ::ArgumentError, "Datatron::Format class expected got #{source_class.class}" 
             end
-            instance_variable_set "@#{op}_source", source_class
+            
+            instance_variable_set "@#{op}_source", source
           else
             instance_variable_get "@#{op}_source"
           end 
@@ -249,9 +271,9 @@ module Datatron
         end
       end
 
-      def using strategy, *args, &block
+      def using klass, *args, &block
         op_field, state = current_field, current_status
-        @strategy_hash[state][op_field] = UsingTranslationAction.substrategy(self, strategy, *args, &block)
+        @strategy_hash[state][op_field] = UsingTranslationAction.substrategy(self, klass, *args, &block)
         self.current_status = :ready, nil
       end
 

@@ -27,13 +27,14 @@ module Datatron
   module Formats
     class TabDelimitedFile < Datatron::Format
       class << self
-        def from filename, seperator = "\n"
+        def from filename, class_name = nil, seperator = "\n"
           filename << ".txt" unless filename =~ /.\.[a-z]+$/
           filename = Datatron.path ? "#{Datatron.path}/#{filename}" : "#{filename}"
 
+          class_name = filename.split(/\/|\./)[-2] unless class_name
+
           raise DataSourceNotFound, "No such file or directory #{filename}" unless File.exists? filename
 
-          class_name = filename.split(/\/|\./)[-2] #last elements without the extension
           data_class class_name do |c|
             
             c.send :include, TabFileMethods

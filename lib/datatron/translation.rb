@@ -16,6 +16,7 @@ module Datatron
     class AwaitingTranslationAction < TranslationAction; end
     class CopyTranslationAction < TranslationAction; end
     class DiscardTranslationAction < TranslationAction; end
+
     
     class UsingTranslationAction < TranslationAction
       module SubStrategy
@@ -26,23 +27,25 @@ module Datatron
           end
         end
       end
-      
+
+    
       class << self
-        def substrategy parent, strat, *args, &block
+        def substrategy parent, klass, *args, &block
           #retrive the strategy if it exists, or create it if it doesn't
           #using the supplied block
-          strategy_name = "#{strat.base_name}_for_#{parent.base_name}_#{parent.instance_variable_get :@name}".intern
+          strategy_name = "#{klass.base_name}_for_#{parent.base_name}_#{parent.instance_variable_get :@name}".intern
           begin
-            strat_instance = strat.send strategy_name
+            strat_instance = klass.send strategy_name
           rescue NoMethodError => e
             if e.name == strategy_name
-              strat.send "#{strat.base_name}_for_#{parent.base_name}_#{parent.instance_variable_get :@name}".intern, *args, &block
+              klass.send "#{klass.base_name}_for_#{parent.base_name}_#{parent.instance_variable_get :@name}".intern, *args, &block
               retry
             else
               raise e
             end
           end
           strat_instance.extend SubStrategy
+          strat_instance.parent = parent
           strat_instance
         end
       end

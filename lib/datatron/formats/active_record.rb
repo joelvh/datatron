@@ -4,9 +4,11 @@ module Datatron
   module Formats 
     class ActiveRecord < Datatron::Format
       class << self
-        def from table
+        def from table, class_name = nil, options = {}
           raise DataSourceNotFound, "Couldn't find table #{table}" unless ::ActiveRecord::Base.connection.tables.include? table
-          data_class table do |c|
+          class_name = table unless class_name
+
+          data_class class_name do |c|
             c.data_source = table.singularize.camelize.constantize 
             class << c
               def keys

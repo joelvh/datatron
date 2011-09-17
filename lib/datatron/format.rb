@@ -30,7 +30,7 @@ module Datatron
         raise ArgumentError, "Block required" if block.nil?
         klass = Class.new(self, &block)
         klass.base_name = name
-        self.const_set name.singularize.camelize.intern, klass
+        self.const_set name.to_s.singularize.camelize.intern, klass
       end
     end
 
@@ -51,7 +51,16 @@ module Datatron
     end
   end
 
-  class Format < Delegator 
+  class Format < Delegator
+    class << self
+      def const_missing const
+        subclass = self.subclasses.find do |sc|
+          const.pluralize.underscore == sc.base_name
+        end
+        return (subclass or super)
+      end
+    end
+
     include DataDelegation
   end
 end

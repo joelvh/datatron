@@ -3,7 +3,7 @@ module Datatron
     extend ActiveSupport::Concern
 
     module ClassMethods
-      [:from, :keys, :each, :fields, :find, :progress].each do |k|
+      [:from, :keys, :each, :fields, :progress].each do |k|
         define_method k do
           raise Datatron::InvalidFormat, "Subclasses should define method #{k}"
         end
@@ -17,6 +17,19 @@ module Datatron
       def rewind
         @data = nil
         yield if block_given?
+        @data = nil
+      end
+
+      #return true if the next call to
+      #next or peek will raise stopIteration.
+      def end?
+        begin
+          @data.peek
+        rescue StopIteration
+          true
+        else
+          false
+        end
       end
 
       attr_reader :current

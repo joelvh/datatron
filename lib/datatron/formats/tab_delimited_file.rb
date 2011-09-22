@@ -73,33 +73,11 @@ module Datatron
                   yield self.new(obj)
                 end
               end
-              
-              def _finder *args, &block
-                rewind do
-                  self.data = Enumerator.new do |y|
-                    self.each do |row|
-                      r = block.call(row, *args)
-                      y << row if r
-                    end
-                  end
-                end
-              end
-              private :_finder
 
               def rewind
                 fd.rewind
                 super
-              end
-
-              def find all = :first, &block
-                raise ArgumentError, 'block required' unless block_given?
-                if all == :first
-                  memo = _finder(&block)
-                  return memo
-                else
-                  memo = _finder(&block).to_a
-                  return memo.empty? ? nil : memo
-                end
+                fd.rewind
               end
             end
           end

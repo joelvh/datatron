@@ -21,6 +21,7 @@ module Datatron
     class UsingTranslationAction < TranslationAction
       module SubStrategy
         attr_accessor :parent
+        attr_accessor :parent_strategy
         def extended obj
           obj.instance_eval do
             @parent = nil
@@ -45,7 +46,7 @@ module Datatron
             end
           end
           strat_instance.extend SubStrategy
-          strat_instance.parent = parent
+          strat_instance.parent_strategy = parent
           strat_instance
         end
       end

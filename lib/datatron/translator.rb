@@ -202,9 +202,10 @@ module Datatron
 
           def items 
             begin
-              @source = self.strategy.next 
-              @destination = self.strategy.new #that's actually an instance method
+              @source = self.strategy.next
+              @destination = self.strategy.new
             rescue StopIteration => e
+              self.rewind 
               raise e
             rescue StandardError => e
               if strategy.strategy_hash.has_key? :error

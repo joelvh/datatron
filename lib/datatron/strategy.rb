@@ -15,18 +15,32 @@ module Datatron
       super
     end
 
-    def next 
-      return @source_enumerator.next if @source_enumerator
+    # retrieve the next source record
+    # if there is a +find+ block specified in the strategy, then
+    # call the find block for each record, executing the strategy if the block
+    # returns true or an instance of the source class is returned.
+    def next
       if @finder
-        args, finder_proc = @finder
-        @source_enumerator = _finder *args, &finder_proc
-      else
-        @source_enumerator = self.from_source
-      end
-      # and one more time for the ladies!
-      @source_enumerator.next
+        self.from_source.data ||= Enumerator.new do |y|
+          args, finder_proc = @finder
+          self.from_source.each do |row|
+            args = [row].concat args[0 .. (finder_proc.arity - 1)]
+            r = self.instance_exec *args, &finder_proc
+            y.yield(case r
+              when FalseClass, NilClass then next
+              when self.from_source then r 
+              else row
+            end)
+            break if r and args.include? :first
+          end
+        end
+      end    
+      self.from_source.next
     end
 
+    # save the current destination record. 
+    # if there is a +route+ block specified in the strategy, then
+    # execute the block, which should call save, etc.
     def save
       if @router
         args, router_proc = @router
@@ -37,6 +51,10 @@ module Datatron
       end
     end
 
+    # create a new destination record
+    # if there is an +append+ block specified in the strategy,
+    # then use the record returned by that block as the the
+    # destination.
     def new
       if @appender
         args, appender_proc = @appender
@@ -44,26 +62,6 @@ module Datatron
         self.instance_exec *args, &appender_proc
       else
         self.to_source.new
-      end
-    end
-
-    private
-    def _finder *args, &block
-      self.from_source.rewind
-      Enumerator.new do |y|
-        self.from_source.each do |row|
-          r = block.call(row, *args)
-          y << row if r
-        end
-      end
-    end
-
-    def _router *args, &block
-      this = self
-      args, router_proc = @router
-      self.destination.define_singleton_method :save do
-        args = [this.destination].concat args[0 .. (router_proc.arity - 1)]
-        this.instance_exec *args, &router_proc
       end
     end
   end

@@ -38,6 +38,10 @@ module Datatron
                   @id = obj.id + 1 
                 end
               end
+
+              def rewind
+                super
+              end
             end
           end
         end

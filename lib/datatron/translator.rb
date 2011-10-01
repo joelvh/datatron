@@ -121,7 +121,8 @@ module Datatron
           :dest_percent => 0.0,
           :last_error => ''
         }
-          
+        
+        @progress[:success] = was_success
         @progress[:successful] += 1 if was_success 
         @progress[:seen] += 1
         @progress[:dest_percent] = strategy.to_source.progress

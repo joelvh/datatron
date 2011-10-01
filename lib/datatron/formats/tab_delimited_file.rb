@@ -18,6 +18,41 @@ module Datatron
           __setobj__(obj || HashWithIndifferentAcess[self.class.keys.zip([])])
         end
       end
+
+      module TabFileReading
+        attr_accessor :seperator
+         
+        def fields line
+          line.chomp.split("\t",-1)
+        end
+
+        def progress
+          @size ||= fd.size 
+          fd.pos.fdiv(@size) rescue (0.0 / 0.0) #Nan
+        end
+
+        def keys
+          return @keys if @keys
+          fd.rewind if fd.lineno != 0
+          @keys = fields(fd.readline(self.seperator))
+        end
+
+        def each
+          return enum_for(:each) unless block_given?
+          fd.lines(self.seperator) do |l|
+            vals = fields(l) 
+            next if vals == keys
+            obj = HashWithIndifferentAccess[self.keys.zip(vals)]
+            yield self.new(obj)
+          end
+        end
+
+        def rewind
+          fd.rewind
+          super
+          fd.rewind
+        end
+      end
     end
   end
 end
@@ -36,50 +71,15 @@ module Datatron
           raise DataSourceNotFound, "No such file or directory #{filename}" unless File.exists? filename
 
           data_class class_name do |c|
-            
             c.send :include, TabFileMethods
+            c.send :extend, TabFileReading
             @seperator = seperator
-            
+           
             define_singleton_method :fd do
               @fd ||= File.open(filename)
             end
-
+            
             c.data_source = @fd
-
-            class << c
-              attr_accessor :seperator
-
-              def fields line
-                line.chomp.split("\t",-1)
-              end
-
-              def progress
-                @size ||= fd.size 
-                fd.pos.fdiv(@size) rescue (0.0 / 0.0) #Nan
-              end
-
-              def keys
-                return @keys if @keys
-                fd.rewind if fd.lineno != 0
-                @keys = fields(fd.readline(self.seperator))
-              end
-
-              def each
-                return enum_for(:each) unless block_given?
-                fd.lines(self.seperator) do |l|
-                  vals = fields(l) 
-                  next if vals == keys
-                  obj = HashWithIndifferentAccess[self.keys.zip(vals)]
-                  yield self.new(obj)
-                end
-              end
-
-              def rewind
-                fd.rewind
-                super
-                fd.rewind
-              end
-            end
           end
         end
       end

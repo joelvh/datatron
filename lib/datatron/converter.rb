@@ -92,20 +92,36 @@ module Datatron
     end
 
     def update translator
-      build_cache unless cache
-      output STDOUT do |str|
-        str << c.progress_display(translator)
+      if not @silent
+        build_cache unless cache
+        output STDOUT do |str|
+          str << c.progress_display(translator)
+        end
+      elsif @logger and @logger.is_a? Logger
+        if not translator.progress[:success]
+          @logger.error("Translator Error #{last_error}")
+        end
+        if translator.progress[:source_percent] == 100
+          @logger.info("Translated #{translator.progress[:successful]} of #{translator.progress[:seen]} records.")
+        end
       end
     end
 
-    def convert 
+    def convert options = {}
+      options.reverse_merge!( 
+       {:silent => false,
+        :logger => false })
+
+      @silent = options[:silent]
+      @logger = options[:logger]
+
       catch :stop_conversion do
         while requested_conversions.size > 0
           translator = Translator.with_strategy(requested_conversions.shift)
           translator.add_observer(self)
           translator.rewind
           translator.translate :validate
-          output(STDOUT) { |str| str << c.down * 4 }
+          output(STDOUT) { |str| str << c.down * 4 } unless @silent
         end
       end
     end

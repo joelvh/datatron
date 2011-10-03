@@ -38,15 +38,15 @@ module Datatron
       def process_field! action 
         case action.value 
           when Symbol, String
-            destination[action.destination_field] = source[action.source_field]
+            destination[action.destination_field.intern] = source[action.source_field.intern]
           when Hash
             strategy.instance_exec *action.value.first, &action.proc_macro
           when CopyTranslationAction
-            destination[action.source_field] = source[action.source_field]
+            destination[action.source_field.intern] = source[action.source_field.intern]
           when DiscardTranslationAction, NilClass
             false
           when Proc
-            strategy.instance_exec source[action.source_field], &action.value
+            strategy.instance_exec source[action.source_field.intern], &action.value
           when Strategy
             action.value.parent = self
             Datatron::Translator.with_strategy(action.value).translate
@@ -80,18 +80,18 @@ module Datatron
             action = Action.new
 
             o_field = ([CopyTranslationAction.instance, DiscardTranslationAction.instance].include? v) ? field : v
-            
+
             if type == :from
               action.destination_field = o_field.to_s
               action.source_field = field.to_s
               action.proc_macro = lambda do |proc_field, prok|
-                destination[proc_field.to_s] = prok.call(source[action.source_field])
+                destination[proc_field.to_s] = prok.call(source[action.source_field.intern])
               end
             elsif type == :to
               action.destination_field = field.to_s
               action.source_field = o_field.to_s
               action.proc_macro = lambda do |proc_field, prok|
-                destination[action.source_field] = prok.call(proc_field.to_s)
+                destination[action.destination_field] = prok.call(source[proc_field.intern])
               end
             end
             action.value = v

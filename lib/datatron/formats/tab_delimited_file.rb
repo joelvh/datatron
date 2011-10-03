@@ -62,8 +62,8 @@ module Datatron
   module Formats
     class TabDelimitedFile < Datatron::Format
       class << self
-        def from filename, class_name = nil, seperator = "\n"
-          filename << ".txt" unless filename =~ /.\.[a-z]+$/
+        def from filename, class_name = nil, seperator = "\n", extension = "txt"
+          filename << ".#{extension}" unless filename =~ /.\.[a-z]+$/ or extension.empty?
           filename = Datatron.path ? "#{Datatron.path}/#{filename}" : "#{filename}"
 
           class_name = filename.split(/\/|\./)[-2] unless class_name

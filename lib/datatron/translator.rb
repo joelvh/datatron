@@ -142,8 +142,8 @@ module Datatron
           # as accessor source, destination
           begin
             translate_item
-            if validate and destination.respond_to? :valid?
-              raise Datatron::RecordInvalid, destination unless destination.valid?
+            if validate
+              raise Datatron::RecordInvalid, destination unless strategy.valid?
             end
             strategy.save
             update_progress(true)

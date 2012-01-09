@@ -51,6 +51,17 @@ module Datatron
       end
     end
 
+    #custom validation block for the destionation
+    def valid?
+      if @validator
+        args, validator_proc = @validator
+        args = [self.destination].concat args[0 .. (validator_proc.arity - 1)]
+        self.instance_exec *args, &validator_proc
+      else
+        self.destination.valid?
+      end
+    end
+
     # create a new destination record
     # if there is an +append+ block specified in the strategy,
     # then use the record returned by that block as the the

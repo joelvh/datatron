@@ -318,6 +318,11 @@ module Datatron
       def route *args, &block
         @router = [args, block]
       end
+      
+      #method to validate the destionation
+      def validate *args, &block
+        @validator = [args, block]
+      end
 
       # how to get a deestination
       # overrides "destination.new"
